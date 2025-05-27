@@ -1,4 +1,4 @@
-import { Plus, FileText } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "./ui/button";
 
 interface HeaderProps {

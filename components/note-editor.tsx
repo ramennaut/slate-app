@@ -1,19 +1,17 @@
 "use client";
 
 import { Note } from "@/lib/types";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Save, Check } from "lucide-react";
 
 interface NoteEditorProps {
   note: Note;
   onSave: (note: Note) => void;
-  onCancel?: () => void;
 }
 
 export default function NoteEditor({
   note,
-  onCancel,
   onSave,
 }: NoteEditorProps) {
   const [title, setTitle] = useState(note.title);
@@ -22,6 +20,8 @@ export default function NoteEditor({
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef({ title: note.title, content: note.content });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isInitialMountRef = useRef(true);
+  const isAutoConvertingRef = useRef(false);
 
   // Update local state when note prop changes (when switching notes)
   useEffect(() => {
@@ -29,7 +29,8 @@ export default function NoteEditor({
     setContent(note.content);
     lastSavedRef.current = { title: note.title, content: note.content };
     setSaveStatus('idle');
-  }, [note.id]); // Dependency on note.id to detect note changes
+    isInitialMountRef.current = true;
+  }, [note.id, note.title, note.content]); // Dependencies: note properties
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newContent = e.target.value;
@@ -139,6 +140,7 @@ export default function NoteEditor({
     });
     
     if (hasChanges) {
+      isAutoConvertingRef.current = true;
       const newContent = processedLines.join('\n');
       setContent(newContent);
       
@@ -148,11 +150,13 @@ export default function NoteEditor({
           const cursorPos = textareaRef.current.selectionStart;
           textareaRef.current.setSelectionRange(cursorPos, cursorPos);
         }
+        isAutoConvertingRef.current = false;
       }, 0);
     }
   }, [content]);
 
-  const autoSave = () => {
+  // Use useCallback to memoize the autoSave function to prevent stale closures
+  const autoSave = useCallback(() => {
     const updatedNote = {
       ...note,
       title: title.trim() || "Untitled Note",
@@ -171,7 +175,7 @@ export default function NoteEditor({
         setTimeout(() => setSaveStatus('idle'), 1500);
       }, 100);
     }
-  };
+  }, [note, title, content, onSave]);
 
   // Autosave effect
   useEffect(() => {
@@ -180,10 +184,21 @@ export default function NoteEditor({
       clearTimeout(timeoutRef.current);
     }
 
-    // Set new timeout for autosave
-    timeoutRef.current = setTimeout(() => {
-      autoSave();
-    }, 2000); // 2 seconds delay
+    // Skip autosave on initial mount, if no changes, or during auto-conversion
+    if (isInitialMountRef.current || isAutoConvertingRef.current) {
+      if (isInitialMountRef.current) {
+        isInitialMountRef.current = false;
+      }
+      return;
+    }
+
+    // Only set timeout if there are actual changes to save
+    if (lastSavedRef.current.title !== title || lastSavedRef.current.content !== content) {
+      // Set new timeout for autosave
+      timeoutRef.current = setTimeout(() => {
+        autoSave();
+      }, 2000); // 2 seconds delay
+    }
 
     // Cleanup function
     return () => {
@@ -191,7 +206,7 @@ export default function NoteEditor({
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [title, content]); // Dependencies: title and content
+  }, [autoSave, title, content]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -202,7 +217,7 @@ export default function NoteEditor({
     };
   }, []);
 
-  const handleManualSave = () => {
+  const handleManualSave = useCallback(() => {
     // Clear any pending autosave
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -222,7 +237,7 @@ export default function NoteEditor({
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 1500);
     }, 100);
-  };
+  }, [note, title, content, onSave]);
 
   const getSaveButtonContent = () => {
     switch (saveStatus) {

@@ -77,7 +77,6 @@ export default function Home() {
         <NoteEditor 
           note={activeNote} 
           onSave={saveNote} 
-          onCancel={() => setActiveNote(null)} 
         />
       );
     }
