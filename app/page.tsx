@@ -7,6 +7,7 @@ import NoteEditor from "@/components/note-editor";
 import { loadNotes, saveNotes } from "@/lib/storage";
 import { Note } from "@/lib/types";
 import { useEffect, useState } from "react";
+import { Sparkles } from "lucide-react";
 
 const getRandomDefaultTitle = (): string => {
   const defaultTitles = [
@@ -67,6 +68,8 @@ export default function Home() {
         <EmptyState
           message="No thoughts, head empty? 🌀"
           buttonText="New Thought"
+          description="Welcome to Slate! Start capturing your thoughts and ideas in beautifully organized notes."
+          icon={Sparkles}
           onButtonClick={createNewNote}
         />
       );
