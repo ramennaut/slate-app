@@ -23,6 +23,12 @@ export default function NoteEditor({
   const isInitialMountRef = useRef(true);
   const isAutoConvertingRef = useRef(false);
 
+  // Undo/Redo functionality
+  const [history, setHistory] = useState<string[]>([note.content]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const isUndoRedoRef = useRef(false);
+  const historyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Update local state when note prop changes (when switching notes)
   useEffect(() => {
     setTitle(note.title);
@@ -30,14 +36,90 @@ export default function NoteEditor({
     lastSavedRef.current = { title: note.title, content: note.content };
     setSaveStatus('idle');
     isInitialMountRef.current = true;
+    // Reset history when switching notes
+    setHistory([note.content]);
+    setHistoryIndex(0);
   }, [note.id, note.title, note.content]); // Dependencies: note properties
+
+  // Add content to history (for undo/redo)
+  const addToHistory = useCallback((newContent: string) => {
+    if (isUndoRedoRef.current) return; // Don't add to history during undo/redo operations
+    
+    setHistory(prev => {
+      const newHistory = prev.slice(0, historyIndex + 1);
+      newHistory.push(newContent);
+      // Limit history to 50 entries to prevent memory issues
+      if (newHistory.length > 50) {
+        newHistory.shift();
+        setHistoryIndex(Math.max(0, historyIndex));
+        return newHistory;
+      }
+      setHistoryIndex(newHistory.length - 1);
+      return newHistory;
+    });
+  }, [historyIndex]);
+
+  // Undo function
+  const undo = useCallback(() => {
+    if (historyIndex > 0) {
+      isUndoRedoRef.current = true;
+      const newIndex = historyIndex - 1;
+      const previousContent = history[newIndex];
+      setContent(previousContent);
+      setHistoryIndex(newIndex);
+      
+      // Reset the flag after a short delay
+      setTimeout(() => {
+        isUndoRedoRef.current = false;
+      }, 10);
+    }
+  }, [history, historyIndex]);
+
+  // Redo function
+  const redo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      isUndoRedoRef.current = true;
+      const newIndex = historyIndex + 1;
+      const nextContent = history[newIndex];
+      setContent(nextContent);
+      setHistoryIndex(newIndex);
+      
+      // Reset the flag after a short delay
+      setTimeout(() => {
+        isUndoRedoRef.current = false;
+      }, 10);
+    }
+  }, [history, historyIndex]);
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newContent = e.target.value;
     setContent(newContent);
+    
+    // Clear previous timeout to avoid multiple entries for rapid typing
+    if (historyTimeoutRef.current) {
+      clearTimeout(historyTimeoutRef.current);
+    }
+    
+    // Add to history with a small delay to avoid too many history entries during typing
+    historyTimeoutRef.current = setTimeout(() => {
+      addToHistory(newContent);
+    }, 500);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle Ctrl+Z (Undo) and Ctrl+Y (Redo)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      undo();
+      return;
+    }
+    
+    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+      e.preventDefault();
+      redo();
+      return;
+    }
+    
     if (e.key === 'Tab') {
       e.preventDefault();
       const textarea = e.currentTarget;
@@ -391,6 +473,9 @@ export default function NoteEditor({
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
+      }
+      if (historyTimeoutRef.current) {
+        clearTimeout(historyTimeoutRef.current);
       }
     };
   }, []);
