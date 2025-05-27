@@ -50,6 +50,9 @@ export default function NoteEditor({
       // Check if current line is a bullet point
       const bulletMatch = currentLine.match(/^(\s*)• (.*)$/);
       
+      // Check if current line is a numbered list item
+      const numberedMatch = currentLine.match(/^(\s*)(\d+)\. (.*)$/);
+      
       if (bulletMatch) {
         e.preventDefault();
         const indent = bulletMatch[1];
@@ -76,6 +79,38 @@ export default function NoteEditor({
           setTimeout(() => {
             if (textareaRef.current) {
               const newPosition = cursorPosition + indent.length + 3;
+              textareaRef.current.setSelectionRange(newPosition, newPosition);
+            }
+          }, 0);
+        }
+      } else if (numberedMatch) {
+        e.preventDefault();
+        const indent = numberedMatch[1];
+        const currentNumber = parseInt(numberedMatch[2]);
+        const numberedText = numberedMatch[3];
+        
+        // If the numbered item is empty, remove it and exit numbered mode
+        if (numberedText.trim() === '') {
+          const newContent = textBeforeCursor.replace(/\n\s*\d+\. $/, '\n') + textAfterCursor;
+          setContent(newContent);
+          
+          // Set cursor position
+          setTimeout(() => {
+            if (textareaRef.current) {
+              const newPosition = cursorPosition - (indent.length + numberedMatch[2].length + 2);
+              textareaRef.current.setSelectionRange(newPosition, newPosition);
+            }
+          }, 0);
+        } else {
+          // Continue with next numbered item
+          const nextNumber = currentNumber + 1;
+          const newContent = textBeforeCursor + '\n' + indent + nextNumber + '. ' + textAfterCursor;
+          setContent(newContent);
+          
+          // Set cursor position after the new number
+          setTimeout(() => {
+            if (textareaRef.current) {
+              const newPosition = cursorPosition + indent.length + nextNumber.toString().length + 3;
               textareaRef.current.setSelectionRange(newPosition, newPosition);
             }
           }, 0);
@@ -219,12 +254,30 @@ export default function NoteEditor({
     <div className="h-full flex flex-col max-w-4xl mx-auto">
       {/* Title Section */}
       <div className="pb-6 mb-8">
-        <input
-          type="text"
+        <textarea
           value={title}
           onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (textareaRef.current) {
+                textareaRef.current.focus();
+                textareaRef.current.setSelectionRange(0, 0);
+              }
+            }
+          }}
           placeholder="Note title"
-          className="text-3xl font-bold border-none px-0 py-0 focus-visible:ring-0 focus:ring-0 focus:outline-none bg-transparent shadow-none rounded-none outline-none h-auto w-full placeholder:text-muted-foreground/40 break-words"
+          className="text-3xl font-bold border-none px-0 py-0 focus-visible:ring-0 focus:ring-0 focus:outline-none bg-transparent shadow-none rounded-none outline-none h-auto w-full placeholder:text-muted-foreground/40 break-words resize-none overflow-hidden"
+          rows={1}
+          style={{
+            minHeight: 'auto',
+            height: 'auto'
+          }}
+          onInput={(e) => {
+            const target = e.target as HTMLTextAreaElement;
+            target.style.height = 'auto';
+            target.style.height = target.scrollHeight + 'px';
+          }}
         />
       </div>
       
@@ -237,6 +290,11 @@ export default function NoteEditor({
           placeholder="Write your note here..."
           className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 placeholder:text-muted-foreground/40 break-words whitespace-pre-wrap w-full"
           ref={textareaRef}
+          style={{
+            fontFamily: 'inherit',
+            fontSize: '16px',
+            lineHeight: '1.5em'
+          }}
         />
       </div>
       
@@ -263,6 +321,29 @@ export default function NoteEditor({
           </Button>
         </div>
       </div>
+      
+      <style jsx>{`
+        textarea {
+          font-family: inherit;
+          position: relative;
+        }
+        textarea::placeholder {
+          color: hsl(var(--muted-foreground) / 0.4);
+        }
+        .gray-lists textarea {
+          background: 
+            linear-gradient(transparent, transparent),
+            repeating-linear-gradient(
+              0deg,
+              transparent 0,
+              transparent 1.5em,
+              transparent 1.5em,
+              transparent 3em
+            );
+          background-size: 100% 1.5em;
+          background-attachment: local;
+        }
+      `}</style>
     </div>
   );
 }
