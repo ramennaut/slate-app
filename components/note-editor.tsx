@@ -38,7 +38,185 @@ export default function NoteEditor({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const textarea = e.currentTarget;
+      const cursorPosition = textarea.selectionStart;
+      const selectionEnd = textarea.selectionEnd;
+      
+      if (e.shiftKey) {
+        // Shift+Tab: Remove indentation
+        const textBeforeCursor = content.substring(0, cursorPosition);
+        const textAfterCursor = content.substring(selectionEnd);
+        
+        // Find the current line start
+        const lines = textBeforeCursor.split('\n');
+        const currentLineIndex = lines.length - 1;
+        const currentLine = lines[currentLineIndex];
+        
+        // Check if the line starts with spaces and remove up to 4 spaces
+        if (currentLine.startsWith('    ')) {
+          // Remove 4 spaces
+          lines[currentLineIndex] = currentLine.substring(4);
+          const newContent = lines.join('\n') + textAfterCursor;
+          setContent(newContent);
+          
+          // Set cursor position (move back by 4 spaces)
+          setTimeout(() => {
+            if (textareaRef.current) {
+              const newPosition = Math.max(0, cursorPosition - 4);
+              textareaRef.current.setSelectionRange(newPosition, newPosition);
+            }
+          }, 0);
+        } else if (currentLine.startsWith('   ')) {
+          // Remove 3 spaces
+          lines[currentLineIndex] = currentLine.substring(3);
+          const newContent = lines.join('\n') + textAfterCursor;
+          setContent(newContent);
+          
+          // Set cursor position (move back by 3 spaces)
+          setTimeout(() => {
+            if (textareaRef.current) {
+              const newPosition = Math.max(0, cursorPosition - 3);
+              textareaRef.current.setSelectionRange(newPosition, newPosition);
+            }
+          }, 0);
+        } else if (currentLine.startsWith('  ')) {
+          // Remove 2 spaces
+          lines[currentLineIndex] = currentLine.substring(2);
+          const newContent = lines.join('\n') + textAfterCursor;
+          setContent(newContent);
+          
+          // Set cursor position (move back by 2 spaces)
+          setTimeout(() => {
+            if (textareaRef.current) {
+              const newPosition = Math.max(0, cursorPosition - 2);
+              textareaRef.current.setSelectionRange(newPosition, newPosition);
+            }
+          }, 0);
+        } else if (currentLine.startsWith(' ')) {
+          // Remove 1 space
+          lines[currentLineIndex] = currentLine.substring(1);
+          const newContent = lines.join('\n') + textAfterCursor;
+          setContent(newContent);
+          
+          // Set cursor position (move back by 1 space)
+          setTimeout(() => {
+            if (textareaRef.current) {
+              const newPosition = Math.max(0, cursorPosition - 1);
+              textareaRef.current.setSelectionRange(newPosition, newPosition);
+            }
+          }, 0);
+        }
+      } else {
+        // Tab: Add indentation
+        const textBeforeCursor = content.substring(0, cursorPosition);
+        const textAfterCursor = content.substring(selectionEnd);
+        
+        // Find the current line
+        const lines = textBeforeCursor.split('\n');
+        const currentLineIndex = lines.length - 1;
+        const currentLine = lines[currentLineIndex];
+        
+        // Check if current line is a bullet point or numbered list
+        const bulletMatch = currentLine.match(/^(\s*)• (.*)$/);
+        const numberedMatch = currentLine.match(/^(\s*)(\d+)\. (.*)$/);
+        
+        if (bulletMatch || numberedMatch) {
+          if (numberedMatch) {
+            // For numbered lists: indent and reset to "1."
+            const indent = numberedMatch[1];
+            const numberedText = numberedMatch[3];
+            lines[currentLineIndex] = '    ' + indent + '1. ' + numberedText;
+            
+            // Renumber all subsequent items at the same original indentation level
+            const originalIndent = indent;
+            for (let i = currentLineIndex + 1; i < lines.length; i++) {
+              const line = lines[i];
+              const match = line.match(/^(\s*)(\d+)\. (.*)$/);
+              if (match && match[1] === originalIndent) {
+                // This is a numbered item at the same original level - renumber it
+                const currentNum = parseInt(match[2]);
+                const newNum = currentNum - 1; // Decrease by 1 since we moved one item to nested level
+                if (newNum > 0) {
+                  lines[i] = match[1] + newNum + '. ' + match[3];
+                }
+              } else if (match && match[1].length < originalIndent.length) {
+                // Hit a less indented item, stop renumbering
+                break;
+              }
+            }
+          } else if (bulletMatch) {
+            // For bullet points: just indent the entire line
+            lines[currentLineIndex] = '    ' + currentLine;
+          }
+          
+          const newContent = lines.join('\n') + textAfterCursor;
+          setContent(newContent);
+          
+          // Set cursor position (move forward by 4 spaces)
+          setTimeout(() => {
+            if (textareaRef.current) {
+              const newPosition = cursorPosition + 4;
+              textareaRef.current.setSelectionRange(newPosition, newPosition);
+            }
+          }, 0);
+        } else {
+          // Regular tab: Add indentation (4 spaces) at cursor position
+          const newContent = textBeforeCursor + '    ' + textAfterCursor;
+          setContent(newContent);
+          
+          // Set cursor position after the inserted spaces
+          setTimeout(() => {
+            if (textareaRef.current) {
+              const newPosition = cursorPosition + 4;
+              textareaRef.current.setSelectionRange(newPosition, newPosition);
+            }
+          }, 0);
+        }
+      }
+    } else if (e.key === 'Backspace') {
+      const textarea = e.currentTarget;
+      const cursorPosition = textarea.selectionStart;
+      const selectionEnd = textarea.selectionEnd;
+      
+      // Only handle if there's no text selection (cursor is just positioned)
+      if (cursorPosition === selectionEnd) {
+        const textBeforeCursor = content.substring(0, cursorPosition);
+        const textAfterCursor = content.substring(cursorPosition);
+        
+        // Find the current line
+        const lines = textBeforeCursor.split('\n');
+        const currentLineIndex = lines.length - 1;
+        const currentLine = lines[currentLineIndex];
+        
+        // Check if cursor is positioned right after leading spaces
+        const leadingSpacesMatch = currentLine.match(/^(\s*)/);
+        const leadingSpaces = leadingSpacesMatch ? leadingSpacesMatch[1] : '';
+        const cursorPositionInLine = cursorPosition - (textBeforeCursor.length - currentLine.length);
+        
+        // If cursor is right after leading spaces (and there are spaces to remove)
+        if (cursorPositionInLine === leadingSpaces.length && leadingSpaces.length > 0) {
+          e.preventDefault();
+          
+          // Remove up to 4 spaces, but not more than what's available
+          const spacesToRemove = Math.min(4, leadingSpaces.length);
+          const newLine = currentLine.substring(spacesToRemove);
+          lines[currentLineIndex] = newLine;
+          
+          const newContent = lines.join('\n') + textAfterCursor;
+          setContent(newContent);
+          
+          // Set cursor position (move back by the number of spaces removed)
+          setTimeout(() => {
+            if (textareaRef.current) {
+              const newPosition = Math.max(0, cursorPosition - spacesToRemove);
+              textareaRef.current.setSelectionRange(newPosition, newPosition);
+            }
+          }, 0);
+        }
+      }
+    } else if (e.key === 'Enter') {
       const textarea = e.currentTarget;
       const cursorPosition = textarea.selectionStart;
       const textBeforeCursor = content.substring(0, cursorPosition);
