@@ -2,9 +2,6 @@
 
 import { Note } from "@/lib/types";
 import { useState, useEffect, useRef } from "react";
-import { Card, CardContent, CardFooter, CardHeader } from "./ui/card";
-import { Input } from "./ui/input";
-import { Textarea } from "./ui/textarea";
 import { Button } from "./ui/button";
 import { Save, Check } from "lucide-react";
 
@@ -219,29 +216,40 @@ export default function NoteEditor({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <Input
+    <div className="h-full flex flex-col max-w-4xl mx-auto">
+      {/* Title Section */}
+      <div className="pb-6 mb-8">
+        <input
+          type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Note title"
-          className="text-xl font-bold border-none px-0 focus-visible:ring-0"
+          className="text-3xl font-bold border-none px-0 py-0 focus-visible:ring-0 focus:ring-0 focus:outline-none bg-transparent shadow-none rounded-none outline-none h-auto w-full placeholder:text-muted-foreground/40 break-words"
         />
-      </CardHeader>
-      <CardContent>
-        <Textarea
+      </div>
+      
+      {/* Content Section */}
+      <div className="flex-1 flex flex-col">
+        <textarea
           value={content}
           onChange={handleContentChange}
           onKeyDown={handleKeyDown}
           placeholder="Write your note here..."
-          className="h-[calc(100vh-350px)] resize-none border-none focus-visible:ring-0 p-0 "
+          className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 placeholder:text-muted-foreground/40 break-words whitespace-pre-wrap w-full"
           ref={textareaRef}
         />
-      </CardContent>
-      <CardFooter className="flex justify-between items-center">
-        <div className="text-sm text-muted-foreground">
+      </div>
+      
+      {/* Footer Section */}
+      <div className="flex justify-between items-center pt-6 mt-8 border-t border-border/30">
+        <div className="text-sm text-muted-foreground font-medium">
           {saveStatus === 'idle' && "Changes autosave after 2 seconds"}
-          {saveStatus === 'saving' && "Saving..."}
+          {saveStatus === 'saving' && (
+            <span className="flex items-center">
+              <div className="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full mr-2" />
+              Saving...
+            </span>
+          )}
           {saveStatus === 'saved' && "✓ Autosaved"}
         </div>
         <div className="flex space-x-2">
@@ -249,11 +257,12 @@ export default function NoteEditor({
             onClick={handleManualSave}
             disabled={saveStatus === 'saving'}
             size="sm"
+            className="font-medium"
           >
             {getSaveButtonContent()}
           </Button>
         </div>
-      </CardFooter>
-    </Card>
+      </div>
+    </div>
   );
 }
