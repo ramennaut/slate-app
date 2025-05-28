@@ -124,6 +124,35 @@ export default function Home() {
     }
   };
 
+  const createAtomicNotes = (atomicNotes: Array<{ title: string; content: string }>) => {
+    if (atomicNotes.length === 0 || !activeNote) {
+      return;
+    }
+    
+    // Create new note objects from atomic notes, linking them to the source
+    const newNotes: Note[] = atomicNotes.map((atomicNote, index) => ({
+      id: `${Date.now()}-${index}`,
+      title: atomicNote.title,
+      content: atomicNote.content,
+      createdAt: Date.now() + index, // Slight offset to maintain order
+      isAtomic: true, // Mark as atomic note
+      sourceNoteId: activeNote.id, // Link to the source note
+    }));
+
+    // Add the new atomic notes to the beginning of the notes list
+    setNotes([...newNotes, ...notes]);
+    
+    // Select the first atomic note to show the result
+    if (newNotes.length > 0) {
+      setActiveNote(newNotes[0]);
+    }
+
+    // Close mobile sidebar if open
+    if (isMobile) {
+      setIsMobileSidebarOpen(false);
+    }
+  };
+
   const renderNoteContent = () => {
     if (!activeNote && notes.length === 0) {
       return (
@@ -146,7 +175,10 @@ export default function Home() {
         <div className="h-full p-4 sm:p-6">
           <NoteEditor 
             note={activeNote} 
-            onSave={saveNote} 
+            onSave={saveNote}
+            onCreateAtomicNotes={createAtomicNotes}
+            onSelectNote={selectNote}
+            notes={notes}
             isMobile={isMobile}
           />
         </div>

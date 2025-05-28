@@ -3,4 +3,6 @@ export interface Note {
   title: string;
   content: string;
   createdAt: number;
+  isAtomic?: boolean;
+  sourceNoteId?: string;
 }

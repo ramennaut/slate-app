@@ -3,15 +3,19 @@
 import { Note } from "@/lib/types";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
-import { Save, Check, HelpCircle, X } from "lucide-react";
+import { Save, Check, HelpCircle, X, Zap, ArrowLeft } from "lucide-react";
+import { splitIntoAtomicNotes } from "@/lib/utils";
 
 interface NoteEditorProps {
   note: Note;
   onSave: (note: Note) => void;
+  onCreateAtomicNotes?: (atomicNotes: Array<{ title: string; content: string }>) => void;
+  onSelectNote?: (note: Note) => void;
+  notes?: Note[];
   isMobile?: boolean;
 }
 
-export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) {
+export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelectNote, notes, isMobile }: NoteEditorProps) {
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
@@ -28,19 +32,6 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
   const [historyIndex, setHistoryIndex] = useState(0);
   const isUndoRedoRef = useRef(false);
   const historyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Helper function to compare content for meaningful changes
-  const hasContentChanged = useCallback((newContent: string, oldContent: string) => {
-    // Normalize both contents for comparison
-    const normalize = (content: string) => {
-      return content
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
-    };
-    
-    return normalize(newContent) !== normalize(oldContent);
-  }, []);
 
   // Helper function to check if there are unsaved changes (including title)
   const hasUnsavedChanges = useCallback(() => {
@@ -65,7 +56,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     // Reset history when note changes
     setHistory([note.content]);
     setHistoryIndex(0);
-  }, [note.id]); // Only reset when note ID changes, not content
+  }, [note.id]);
 
   // Add content to history (for undo/redo)
   const addToHistory = useCallback(
@@ -402,7 +393,6 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     if (removedSpaces > 0 && orderedMatch) {
       const newIndentLevel = orderedMatch[1].substring(removedSpaces);
       const content = orderedMatch[3];
-      const originalNumber = parseInt(orderedMatch[2]);
       
       // Find the correct number for this new indentation level
       const newNumber = getNextOrderedNumber(text, cursorPos, newIndentLevel);
@@ -524,27 +514,6 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     return false; // Let normal backspace behavior handle it
   };
 
-  // Use useCallback to memoize the autoSave function to prevent stale closures
-  const autoSave = useCallback(() => {
-    const updatedNote = {
-      ...note,
-      title: title.trim() || "Untitled Note",
-      content,
-    };
-
-    // Only save if content has actually changed
-    if (hasUnsavedChanges()) {
-      setSaveStatus("saving");
-      onSave(updatedNote);
-      lastSavedRef.current = { title, content };
-
-      // Keep status as "saved" after successful save
-      setTimeout(() => {
-        setSaveStatus("saved");
-      }, 100);
-    }
-  }, [note, title, content, onSave, hasUnsavedChanges]);
-
   // Autosave effect
   useEffect(() => {
     // Clear existing timeout
@@ -552,11 +521,26 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       clearTimeout(timeoutRef.current);
     }
 
+    // Check if there are unsaved changes
+    const hasChanges = lastSavedRef.current.title !== title || lastSavedRef.current.content !== content;
+
     // Only set timeout if there are actual changes to save
-    if (hasUnsavedChanges()) {
+    if (hasChanges) {
       // Set new timeout for autosave
       timeoutRef.current = setTimeout(() => {
-          autoSave();
+        const updatedNote = {
+          ...note,
+          title: title.trim() || "Untitled Note",
+          content,
+        };
+
+        setSaveStatus("saving");
+        onSave(updatedNote);
+        lastSavedRef.current = { title, content };
+
+        setTimeout(() => {
+          setSaveStatus("saved");
+        }, 100);
       }, 2000); // 2 seconds delay
     }
 
@@ -566,7 +550,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [autoSave, title, content, hasUnsavedChanges]);
+  }, [note, title, content, onSave]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -653,41 +637,73 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     }
   }, [title, saveStatus]);
 
+  const handleCreateAtomicNotes = () => {
+    const atomicNotes = splitIntoAtomicNotes(content);
+    
+    if (onCreateAtomicNotes && atomicNotes.length > 0) {
+      onCreateAtomicNotes(atomicNotes);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col max-w-4xl mx-auto">
-      {/* Title Section */}
-      <div className="pb-6 mb-8">
-        <textarea
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              if (textareaRef.current) {
-                textareaRef.current.focus();
+      {/* Back to Source Note Link - Only show for atomic notes */}
+      {note.isAtomic && note.sourceNoteId && notes && onSelectNote && (
+        <div className="mb-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-sidebar-foreground/60 hover:text-sidebar-foreground p-1 h-auto"
+            onClick={() => {
+              const sourceNote = notes.find(n => n.id === note.sourceNoteId);
+              if (sourceNote) {
+                onSelectNote(sourceNote);
               }
-            }
-            // Handle Ctrl+S (Save)
-            if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-              e.preventDefault();
-              handleManualSave();
-              return;
-            }
-          }}
-          placeholder="Note title"
-          className="text-3xl font-bold border-none px-0 py-0 focus-visible:ring-0 focus:ring-0 focus:outline-none bg-transparent shadow-none rounded-none outline-none h-auto w-full placeholder:text-muted-foreground/40 break-words resize-none overflow-hidden"
-          rows={1}
-          style={{
-            minHeight: "auto",
-            height: "auto",
-          }}
-          onInput={(e) => {
-            const target = e.target as HTMLTextAreaElement;
-            target.style.height = "auto";
-            target.style.height = target.scrollHeight + "px";
-          }}
-        />
-      </div>
+            }}
+          >
+            <ArrowLeft className="h-3 w-3 mr-1" />
+            <span className="text-xs">
+              Back to {notes.find(n => n.id === note.sourceNoteId)?.title || "Source Note"}
+            </span>
+          </Button>
+        </div>
+      )}
+
+      {/* Title Section - Only show for regular notes */}
+      {!note.isAtomic && (
+        <div className="pb-6 mb-8">
+          <textarea
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (textareaRef.current) {
+                  textareaRef.current.focus();
+                }
+              }
+              // Handle Ctrl+S (Save)
+              if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+                e.preventDefault();
+                handleManualSave();
+                return;
+              }
+            }}
+            placeholder="Note title"
+            className="text-3xl font-bold border-none px-0 py-0 focus-visible:ring-0 focus:ring-0 focus:outline-none bg-transparent shadow-none rounded-none outline-none h-auto w-full placeholder:text-muted-foreground/40 break-words resize-none overflow-hidden"
+            rows={1}
+            style={{
+              minHeight: "auto",
+              height: "auto",
+            }}
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = "auto";
+              target.style.height = target.scrollHeight + "px";
+            }}
+          />
+        </div>
+      )}
 
       {/* Content Section */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -699,7 +715,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
               value={content}
               onChange={handleContentChange}
               onKeyDown={handleKeyDown}
-              placeholder="Write your note here..."
+              placeholder={note.isAtomic ? "Atomic note content..." : "Write your note here..."}
               className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 w-full overflow-y-auto"
               style={{
                 fontFamily: "inherit",
@@ -761,8 +777,8 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
                 <div className="border-t border-border pt-2 mt-2">
                   <div className="text-xs font-medium text-muted-foreground mb-2">Lists</div>
                   <div className="space-y-1 text-xs">
-                    <div>• Start with "1. " for numbered lists</div>
-                    <div>• Start with "- ", "* ", or "• " for bullet lists</div>
+                    <div>&bull; Start with &quot;1. &quot; for numbered lists</div>
+                    <div>&bull; Start with &quot;- &quot;, &quot;* &quot;, or &quot;&bull; &quot; for bullet lists</div>
                     <div>• Press Enter to continue list</div>
                     <div>• Press Tab to indent (4 spaces), Shift+Tab to unindent</div>
                     <div>• Press Backspace to remove entire indent levels</div>
@@ -798,6 +814,19 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
               className="font-medium"
             >
               {getSaveButtonContent()}
+            </Button>
+          )}
+          {/* Only show Create Atomic Notes button for regular notes */}
+          {!note.isAtomic && (
+            <Button
+              onClick={handleCreateAtomicNotes}
+              size="sm"
+              className="font-medium"
+              disabled={!content.trim() || content.trim().length < 100}
+              title={content.trim().length < 100 ? "Note needs more content to split into atomic notes" : "Split this note into smaller, focused notes"}
+            >
+              <Zap className="h-4 w-4 mr-2" />
+              Create Atomic Notes
             </Button>
           )}
         </div>
