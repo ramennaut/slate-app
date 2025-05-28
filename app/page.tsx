@@ -26,12 +26,23 @@ export default function Home() {
   const [activeNote, setActiveNote] = useState<Note | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  const handleContentAreaClick = () => {
+    if (isMobile && isMobileSidebarOpen) {
+      setIsMobileSidebarOpen(false);
+    }
+  };
 
   const checkDevice = useCallback(() => {
     const mobile = window.innerWidth < 768; // md breakpoint
     setIsMobile(mobile);
     if (isInitialMountRef.current) { // Only set initial collapse state on mount
-        setIsSidebarCollapsed(mobile);
+      // setIsSidebarCollapsed(mobile); // Don't auto-collapse on mobile initially
+      if (!mobile) { // Collapse sidebar by default on desktop if that's desired
+        setIsSidebarCollapsed(true);
+      }
+      setIsMobileSidebarOpen(false); // Ensure mobile sidebar is closed initially
     }
   }, []);
 
@@ -59,7 +70,11 @@ export default function Home() {
   }, [notes]);
 
   const handleToggleSidebar = () => {
-    setIsSidebarCollapsed(!isSidebarCollapsed);
+    if (isMobile) {
+      setIsMobileSidebarOpen(!isMobileSidebarOpen);
+    } else {
+      setIsSidebarCollapsed(!isSidebarCollapsed);
+    }
   };
 
   const createNewNote = () => {
@@ -71,20 +86,17 @@ export default function Home() {
     };
     setNotes([newNote, ...notes]);
     setActiveNote(newNote);
-    if (isMobile && !isSidebarCollapsed) { // If on mobile and sidebar is expanded, collapse it to show editor
-        // This behavior can be debated: do we collapse or keep it open?
-        // For now, let's assume we want to see the new note immediately.
-        // setIsSidebarCollapsed(true); 
-    } else if (isMobile && isSidebarCollapsed) {
-        // If mobile and sidebar is collapsed, new note created, we might want to open it.
-        // Or rely on user to open it. For now, let's keep it collapsed.
+    if (isMobile) {
+      setIsMobileSidebarOpen(false); // Close mobile sidebar to show editor
     }
+    // On desktop, if sidebar is collapsed, and we create a new note, we might want to ensure it's visible
+    // or handle as per existing logic (currently does nothing specific for desktop in this case)
   };
 
   const selectNote = (note: Note) => {
     setActiveNote(note);
-    if (isMobile) { // On mobile, collapse sidebar when a note is selected to show the editor
-      setIsSidebarCollapsed(true);
+    if (isMobile) { // On mobile, close sidebar when a note is selected to show the editor
+      setIsMobileSidebarOpen(false);
     }
   };
 
@@ -120,7 +132,11 @@ export default function Home() {
           buttonText="New Thought"
           description="Start capturing your thoughts and ideas in beautifully organized notes."
           icon={Sparkles}
-          onButtonClick={createNewNote}
+          onButtonClick={() => {
+            createNewNote();
+            // If on mobile, ensure sidebar is closed after creating note from empty state
+            if (isMobile) setIsMobileSidebarOpen(false);
+          }}
         />
       );
     }
@@ -138,49 +154,51 @@ export default function Home() {
   };
 
   // Determine sidebar width class based on state
-  const sidebarWidthClass = isSidebarCollapsed ? "w-16" : (isMobile ? "w-full" : "w-80");
+  // const sidebarWidthClass = isSidebarCollapsed ? "w-16" : (isMobile ? "w-full" : "w-80");
   // Determine main content visibility
-  const mainContentVisible = !isMobile || (isMobile && isSidebarCollapsed);
+  // const mainContentVisible = !isMobile || (isMobile && isSidebarCollapsed);
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
-      <Header createNewNote={createNewNote} toggleSidebar={handleToggleSidebar} isMobile={isMobile} isSidebarCollapsed={isSidebarCollapsed} />
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar Container */}
-        {/* Show sidebar always on md+, or on mobile if not collapsed (takes full width) or if collapsed (icon width) */}
-        {(!isMobile || !isSidebarCollapsed) && (
-             <div className={`transition-all duration-300 ease-in-out flex-shrink-0 h-full ${sidebarWidthClass}`}>
-                <NotesSidebar
-                    notes={notes}
-                    onSelectNote={selectNote}
-                    createNewNote={createNewNote}
-                    onDeleteNote={deleteNote}
-                    activeNoteId={activeNote?.id}
-                    isCollapsed={isSidebarCollapsed} // Pass down the state
-                    toggleSidebar={handleToggleSidebar} // Pass down the toggle function
-                />
-            </div>
-        )}
-         {/* On mobile, if sidebar is collapsed, we still need to render it (as w-16) but hide it visually if it's not meant to be shown for the logic below */}
-         {/* This placeholder ensures the toggle button in the header can always control a sidebar */}
-         {isMobile && isSidebarCollapsed && (
-            <div className={`w-16 flex-shrink-0 h-full transition-all duration-300 ease-in-out`}>
-                 <NotesSidebar
-                    notes={notes}
-                    onSelectNote={selectNote}
-                    createNewNote={createNewNote}
-                    onDeleteNote={deleteNote}
-                    activeNoteId={activeNote?.id}
-                    isCollapsed={true} 
-                    toggleSidebar={handleToggleSidebar} 
-                />
-            </div>
-         )}
+      <Header 
+        createNewNote={createNewNote} 
+        toggleSidebar={handleToggleSidebar} 
+        isMobile={isMobile} 
+        isSidebarCollapsed={isMobile ? !isMobileSidebarOpen : isSidebarCollapsed} 
+      />
+      <div className="flex flex-1 overflow-hidden"> {/* Parent overflow-hidden is key for clipping */} 
+        {/* Unified Sidebar Container */} 
+        <div 
+          className={`transition-all duration-300 ease-in-out flex-shrink-0 h-full overflow-hidden ${ 
+            isMobile 
+              ? (isMobileSidebarOpen ? 'w-80' : 'w-0') 
+              : (isSidebarCollapsed ? 'w-16' : 'w-80') 
+          }`}
+        >
+          {/* Render NotesSidebar only if it's supposed to be visible (width > 0), 
+              or let NotesSidebar handle its internal empty state if container is w-0/w-16. 
+              For simplicity and to ensure transitions, NotesSidebar is always rendered here, 
+              and its internal state is managed by isCollapsed. 
+          */}
+          <NotesSidebar
+            notes={notes}
+            onSelectNote={selectNote}
+            createNewNote={createNewNote}
+            onDeleteNote={deleteNote}
+            activeNoteId={activeNote?.id}
+            isCollapsed={isMobile ? !isMobileSidebarOpen : isSidebarCollapsed}
+            toggleSidebar={handleToggleSidebar}
+            isMobile={isMobile}
+          />
+        </div>
 
-
-        {/* Main Content Area */}
-        {/* Show main content on md+, or on mobile only if sidebar is collapsed */}
-        <div className={`flex-1 overflow-y-auto transition-all duration-300 ease-in-out ${mainContentVisible ? 'block' : 'hidden'} md:block`}>
+        {/* Main Content Area - Modified for push effect, dimming, and click-to-close */} 
+        <div 
+          className={`w-full flex-shrink-0 h-full overflow-y-auto transition-all duration-300 ease-in-out ${ 
+            isMobile && isMobileSidebarOpen ? 'opacity-50' : ''
+          }`}
+          onClick={handleContentAreaClick}
+        >
           <div className="h-full p-4 sm:p-6">
             {renderNoteContent()}
           </div>
