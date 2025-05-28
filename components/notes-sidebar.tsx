@@ -19,6 +19,7 @@ interface NotesSidebarProps {
   activeNoteId?: string;
   isCollapsed: boolean;
   toggleSidebar: () => void;
+  isMobile: boolean;
 }
 
 export default function NotesSidebar({
@@ -29,6 +30,7 @@ export default function NotesSidebar({
   activeNoteId,
   isCollapsed,
   toggleSidebar,
+  isMobile,
 }: NotesSidebarProps) {
   const activeNote = notes.find((note) => note.id === activeNoteId);
 
@@ -54,17 +56,19 @@ export default function NotesSidebar({
             isCollapsed ? "w-full justify-center" : "ml-2"
           }`}
         >
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`h-7 w-7 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/80 rounded-md transition-all duration-200 flex-shrink-0 ${
-              isCollapsed ? "hidden" : ""
-            }`}
-            onClick={createNewNote}
-            title="Create new note"
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
+          {!isMobile && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-7 w-7 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/80 rounded-md transition-all duration-200 flex-shrink-0 ${
+                isCollapsed ? "hidden" : ""
+              }`}
+              onClick={createNewNote}
+              title="Create new note"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
@@ -85,19 +89,21 @@ export default function NotesSidebar({
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/80 rounded-md transition-all duration-200 flex-shrink-0"
-            onClick={toggleSidebar}
-            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {isCollapsed ? (
-              <PanelLeftOpen className="h-4 w-4" />
-            ) : (
-              <PanelLeftClose className="h-4 w-4" />
-            )}
-          </Button>
+          {!isMobile && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/80 rounded-md transition-all duration-200 flex-shrink-0"
+              onClick={toggleSidebar}
+              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {isCollapsed ? (
+                <PanelLeftOpen className="h-4 w-4" />
+              ) : (
+                <PanelLeftClose className="h-4 w-4" />
+              )}
+            </Button>
+          )}
         </div>
       </div>
 
