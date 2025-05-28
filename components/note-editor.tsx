@@ -23,6 +23,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
   const textareaRef = useRef<HTMLDivElement>(null);
   const isInitialMountRef = useRef(true);
   const isAutoConvertingRef = useRef(false);
+  const isFormattingRef = useRef(false);
 
   // Undo/Redo functionality
   const [history, setHistory] = useState<string[]>([note.content]);
@@ -31,17 +32,26 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
   const historyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const helpRef = useRef<HTMLDivElement>(null);
 
-  // Helper function to check if there are unsaved changes
+  // Helper function to compare content for meaningful changes
+  const hasContentChanged = useCallback((newContent: string, oldContent: string) => {
+    // Normalize both contents for comparison
+    const normalize = (content: string) => {
+      return content
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+    };
+    
+    return normalize(newContent) !== normalize(oldContent);
+  }, []);
+
+  // Helper function to check if there are unsaved changes (including title)
   const hasUnsavedChanges = useCallback(() => {
-    const normalizedLastContent = lastSavedRef.current.content
-      .replace(/\s+/g, " ")
-      .trim();
-    const normalizedCurrentContent = content.replace(/\s+/g, " ").trim();
     return (
       lastSavedRef.current.title !== title ||
-      normalizedLastContent !== normalizedCurrentContent
+      hasContentChanged(content, lastSavedRef.current.content)
     );
-  }, [title, content]);
+  }, [title, content, hasContentChanged]);
 
   // Helper function to detect platform for keyboard shortcuts
   const isMac =
@@ -49,38 +59,149 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     navigator.platform.toUpperCase().indexOf("MAC") >= 0;
   const cmdKey = isMac ? "⌘" : "Ctrl";
 
-  // Update local state when note prop changes (when switching notes)
+  // Initialize content when note changes
   useEffect(() => {
     setTitle(note.title);
     setContent(note.content);
     lastSavedRef.current = { title: note.title, content: note.content };
-    setSaveStatus("saved");
-    isInitialMountRef.current = true;
-    // Reset history when switching notes
+
+    // Reset history when note changes
     setHistory([note.content]);
     setHistoryIndex(0);
 
-    // Update editor content
+    // Update editor content immediately on mount and note change
     if (textareaRef.current) {
       textareaRef.current.innerHTML = markdownToHtml(note.content);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.id]); // Only reset when note ID changes, not content
 
+  // Helper function to save cursor position
+  const saveCursorPosition = useCallback(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || !textareaRef.current) return null;
+
+    const range = selection.getRangeAt(0);
+    
+    // Only save if the selection is within our contentEditable element
+    if (!textareaRef.current.contains(range.commonAncestorContainer)) return null;
+
+    try {
+      // Get the start offset relative to the contentEditable element
+      const preSelectionRange = document.createRange();
+      preSelectionRange.setStart(textareaRef.current, 0);
+      preSelectionRange.setEnd(range.startContainer, range.startOffset);
+      
+      const start = preSelectionRange.toString().length;
+      const end = start + range.toString().length;
+      
+      return { start, end };
+    } catch (e) {
+      console.warn("Could not save cursor position:", e);
+      return null;
+    }
+  }, []);
+
+  // Helper function to restore cursor position
+  const restoreCursorPosition = useCallback((position: { start: number; end: number } | null) => {
+    if (!position || !textareaRef.current) return;
+
+    try {
+      const selection = window.getSelection();
+      if (!selection) return;
+
+      // Create a walker to traverse text nodes
+      const walker = document.createTreeWalker(
+        textareaRef.current,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+
+      let currentOffset = 0;
+      let startNode = null;
+      let endNode = null;
+      let startOffset = 0;
+      let endOffset = 0;
+
+      // Find the start position
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        const nodeLength = node.textContent?.length || 0;
+        
+        if (currentOffset + nodeLength >= position.start && !startNode) {
+          startNode = node;
+          startOffset = position.start - currentOffset;
+        }
+        
+        if (currentOffset + nodeLength >= position.end) {
+          endNode = node;
+          endOffset = position.end - currentOffset;
+          break;
+        }
+        
+        currentOffset += nodeLength;
+      }
+
+      if (startNode) {
+        const range = document.createRange();
+        range.setStart(startNode, Math.min(startOffset, startNode.textContent?.length || 0));
+        
+        if (endNode) {
+          range.setEnd(endNode, Math.min(endOffset, endNode.textContent?.length || 0));
+        } else {
+          range.collapse(true);
+        }
+
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    } catch (e) {
+      console.warn("Could not restore cursor position:", e);
+    }
+  }, []);
+
   // Separate effect to handle content updates from parent without resetting history
   useEffect(() => {
-    // Only update if we're not in the middle of editing (to avoid conflicts with local changes)
-    if (saveStatus === "saved" && !isInitialMountRef.current) {
-      setTitle(note.title);
-      setContent(note.content);
-      lastSavedRef.current = { title: note.title, content: note.content };
+    // Only update if we're not in the middle of editing, formatting, or undo/redo operations
+    if (saveStatus === "saved" && !isInitialMountRef.current && !isFormattingRef.current && !isUndoRedoRef.current) {
+      // Check if the content has actually changed meaningfully
+      const currentDisplayContent = textareaRef.current?.innerHTML || '';
+      const newDisplayContent = markdownToHtml(note.content);
+      
+      // Only update the DOM if there's a meaningful difference
+      if (hasContentChanged(newDisplayContent, currentDisplayContent)) {
+        // Save cursor position before updating content
+        const cursorMarker = saveCursorPosition();
+        
+        setTitle(note.title);
+        setContent(note.content);
+        lastSavedRef.current = { title: note.title, content: note.content };
 
-      // Update editor content without resetting history
-      if (textareaRef.current) {
-        textareaRef.current.innerHTML = markdownToHtml(note.content);
+        // Update editor content without resetting history
+        if (textareaRef.current) {
+          textareaRef.current.innerHTML = newDisplayContent;
+          
+          // Restore cursor position after a brief delay to allow DOM to update
+          setTimeout(() => {
+            restoreCursorPosition(cursorMarker);
+          }, 0);
+        }
+      } else {
+        // Content hasn't changed visually, just update the state without touching DOM
+        setTitle(note.title);
+        setContent(note.content);
+        lastSavedRef.current = { title: note.title, content: note.content };
       }
     }
-  }, [note.title, note.content, saveStatus]);
+  }, [note.title, note.content, saveStatus, saveCursorPosition, restoreCursorPosition, hasContentChanged]);
+
+  // Initialize content on first mount
+  useEffect(() => {
+    if (isInitialMountRef.current && textareaRef.current) {
+      textareaRef.current.innerHTML = markdownToHtml(note.content);
+      isInitialMountRef.current = false;
+    }
+  }, [note.content]);
 
   // Function to convert markdown to HTML for display
   const markdownToHtml = (text: string) => {
@@ -88,8 +209,17 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       text
         // Bold: **text** -> <strong>text</strong>
         .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-        // Italic: *text* -> <em>text</em>
-        .replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, "<em>$1</em>")
+        // Italic: *text* -> <em>text</em> (simple and reliable pattern)
+        .replace(/(?:^|[^*])\*([^*\n]+?)\*(?![*])/g, (match, content) => {
+          // Check if this is not part of a bold (**text**)
+          if (match.includes('**')) return match;
+          const firstChar = match[0];
+          if (firstChar === '*') {
+            return `<em>${content}</em>`;
+          } else {
+            return firstChar + `<em>${content}</em>`;
+          }
+        })
         // Bullet points: • text -> <li>text</li>
         .replace(/^(\s*)• (.+)$/gm, "$1<li>$2</li>")
         // Numbered lists: 1. text -> <li>text</li>
@@ -234,10 +364,14 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
           clearTimeout(historyTimeoutRef.current);
         }
 
-        // Add to history with a small delay to avoid too many history entries during typing
+        // Add to history with a longer delay during formatting to avoid too many entries
+        const historyDelay = isFormattingRef.current ? 1000 : 500;
         historyTimeoutRef.current = setTimeout(() => {
-          addToHistory(markdownContent);
-        }, 500);
+          // Only add to history if we're not in the middle of formatting
+          if (!isFormattingRef.current) {
+            addToHistory(markdownContent);
+          }
+        }, historyDelay);
       }
     }
   };
@@ -385,6 +519,132 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     }
   };
 
+  // Modern bold/italic formatting functions
+  const applyFormat = (tagName: string) => {
+    isFormattingRef.current = true; // Set formatting flag
+    
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      isFormattingRef.current = false;
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    
+    // Check if we're in the contentEditable element
+    if (!textareaRef.current?.contains(range.commonAncestorContainer)) {
+      isFormattingRef.current = false;
+      return;
+    }
+
+    if (range.collapsed) {
+      // No selection - insert formatting tags for future typing
+      const formatElement = document.createElement(tagName);
+      formatElement.textContent = "\u200B"; // Zero-width space to hold cursor
+      
+      try {
+        range.insertNode(formatElement);
+        
+        // Position cursor inside the format element
+        const newRange = document.createRange();
+        newRange.setStart(formatElement, 0);
+        newRange.setEnd(formatElement, 1);
+        
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      } catch (e) {
+        console.warn("Could not apply formatting:", e);
+      }
+    } else {
+      // Has selection - wrap selected text
+      try {
+        const selectedContent = range.extractContents();
+        const formatElement = document.createElement(tagName);
+        formatElement.appendChild(selectedContent);
+        range.insertNode(formatElement);
+        
+        // Select the formatted content
+        const newRange = document.createRange();
+        newRange.selectNodeContents(formatElement);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+      } catch (e) {
+        console.warn("Could not apply formatting:", e);
+      }
+    }
+    
+    // Trigger content change to update state
+    handleContentChange();
+    
+    // Reset formatting flag after a short delay
+    setTimeout(() => {
+      isFormattingRef.current = false;
+    }, 100);
+  };
+
+  // Toggle formatting if already applied
+  const toggleFormat = (tagName: string) => {
+    isFormattingRef.current = true; // Set formatting flag
+    
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      isFormattingRef.current = false;
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    let currentElement: Node | null = range.commonAncestorContainer;
+    
+    // If text node, get parent element
+    if (currentElement.nodeType === Node.TEXT_NODE) {
+      currentElement = currentElement.parentNode;
+    }
+    
+    // Check if currentElement is valid and is an Element
+    if (!currentElement || currentElement.nodeType !== Node.ELEMENT_NODE) {
+      isFormattingRef.current = false;
+      return;
+    }
+    
+    // Check if we're already inside the target format
+    let formatElement = null;
+    let element = currentElement as Element;
+    
+    while (element && element !== textareaRef.current) {
+      if (element.tagName?.toLowerCase() === tagName.toLowerCase()) {
+        formatElement = element;
+        break;
+      }
+      const parentEl = element.parentElement;
+      if (!parentEl) break;
+      element = parentEl;
+    }
+    
+    if (formatElement) {
+      // Remove formatting
+      try {
+        const parent = formatElement.parentNode;
+        while (formatElement.firstChild) {
+          parent?.insertBefore(formatElement.firstChild, formatElement);
+        }
+        parent?.removeChild(formatElement);
+        
+        // Trigger content change
+        handleContentChange();
+      } catch (e) {
+        console.warn("Could not remove formatting:", e);
+      }
+    } else {
+      // Apply formatting
+      applyFormat(tagName);
+    }
+    
+    // Reset formatting flag after a short delay
+    setTimeout(() => {
+      isFormattingRef.current = false;
+    }, 100);
+  };
+
   // Handle key events
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     // Handle Ctrl+Z (Undo) and Ctrl+Y (Redo)
@@ -410,18 +670,16 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       return;
     }
 
-    // Handle Ctrl+B (Bold) and Ctrl+I (Italic) - Native contentEditable commands
+    // Handle Ctrl+B (Bold) and Ctrl+I (Italic) - Modern implementation
     if ((e.ctrlKey || e.metaKey) && e.key === "b") {
       e.preventDefault();
-      document.execCommand("bold", false);
-      handleContentChange(); // Update content after formatting
+      toggleFormat("strong");
       return;
     }
 
     if ((e.ctrlKey || e.metaKey) && e.key === "i") {
       e.preventDefault();
-      document.execCommand("italic", false);
-      handleContentChange(); // Update content after formatting
+      toggleFormat("em");
       return;
     }
   };
@@ -454,8 +712,8 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       clearTimeout(timeoutRef.current);
     }
 
-    // Skip autosave on initial mount, if no changes, or during auto-conversion
-    if (isInitialMountRef.current || isAutoConvertingRef.current) {
+    // Skip autosave on initial mount, if no changes, during auto-conversion, or while formatting
+    if (isInitialMountRef.current || isAutoConvertingRef.current || isFormattingRef.current) {
       if (isInitialMountRef.current) {
         isInitialMountRef.current = false;
       }
@@ -466,7 +724,10 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     if (hasUnsavedChanges()) {
       // Set new timeout for autosave
       timeoutRef.current = setTimeout(() => {
-        autoSave();
+        // Double-check that we're not formatting before saving
+        if (!isFormattingRef.current) {
+          autoSave();
+        }
       }, 2000); // 2 seconds delay
     }
 
@@ -540,7 +801,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
   // Close help popup when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (helpRef.current && !helpRef.current.contains(event.target as Node)) {
+      if (helpRef.current && event.target && !helpRef.current.contains(event.target as Node)) {
         setShowHelp(false);
       }
     };
@@ -819,3 +1080,4 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     </div>
   );
 }
+
