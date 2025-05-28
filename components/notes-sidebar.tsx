@@ -39,6 +39,9 @@ export default function NotesSidebar({
   const regularNotes = notes.filter(note => !note.isAtomic);
   const atomicNotes = notes.filter(note => note.isAtomic);
 
+  // Find the currently selected note (could be regular or atomic)
+  const selectedNote = notes.find(note => note.id === activeNoteId);
+
   const renderNoteItem = (note: Note, isSubNote = false) => {
     const isActive = activeNoteId === note.id;
     const isAtomic = note.isAtomic;
@@ -153,15 +156,17 @@ export default function NotesSidebar({
             className={`h-7 w-7 rounded-md transition-all duration-200 flex-shrink-0 ${
               isCollapsed ? "hidden" : ""
             } ${
-              activeNote
+              selectedNote
                 ? "text-sidebar-foreground/70 hover:text-destructive hover:bg-destructive/10"
                 : "text-sidebar-foreground/40 cursor-not-allowed"
             }`}
-            onClick={() => activeNote && onDeleteNote(activeNote.id)}
-            disabled={!activeNote}
+            onClick={() => selectedNote && onDeleteNote(selectedNote.id)}
+            disabled={!selectedNote}
             title={
-              activeNote
-                ? `Delete "${activeNote.title || "Untitled Note"}"`
+              selectedNote
+                ? selectedNote.isAtomic 
+                  ? `Delete atomic note: "${selectedNote.content.slice(0, 30)}${selectedNote.content.length > 30 ? '...' : ''}"`
+                  : `Delete "${selectedNote.title || "Untitled Note"}"`
                 : "No note selected"
             }
           >

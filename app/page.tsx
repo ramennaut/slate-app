@@ -5,6 +5,7 @@ import Header from "@/components/header";
 import NotesSidebar from "@/components/notes-sidebar";
 import NoteEditor from "@/components/note-editor";
 import AtomicCardsView from "@/components/atomic-cards-view";
+import AtomicNotesPreview from "@/components/atomic-notes-preview";
 import { loadNotes, saveNotes } from "@/lib/storage";
 import { Note } from "@/lib/types";
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -26,6 +27,10 @@ export default function Home() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeNote, setActiveNote] = useState<Note | null>(null);
   const [openAtomicNotes, setOpenAtomicNotes] = useState<Note[]>([]);
+  const [atomicNotesPreview, setAtomicNotesPreview] = useState<{
+    potentialNotes: Array<{ title: string; content: string }>;
+    sourceNote: Note;
+  } | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -105,8 +110,8 @@ export default function Home() {
         }
         return [...prev, note];
       });
-      // Clear regular active note when viewing atomic notes
-      setActiveNote(null);
+      // Set this atomic note as "active" for sidebar selection/delete purposes
+      setActiveNote(note);
     } else {
       // For regular notes, set as active and clear atomic cards
       setActiveNote(note);
@@ -126,10 +131,17 @@ export default function Home() {
   };
 
   const deleteNote = (id: string) => {
+    const noteToDelete = notes.find(note => note.id === id);
     const noteIndex = notes.findIndex(note => note.id === id);
     const updatedNotes = notes.filter((note) => note.id !== id);
     setNotes(updatedNotes);
     
+    // If deleting an atomic note, also remove it from the open cards
+    if (noteToDelete?.isAtomic) {
+      setOpenAtomicNotes(prev => prev.filter(note => note.id !== id));
+    }
+    
+    // Handle active note logic
     if (activeNote && activeNote.id === id) {
       // Auto-select the next note for continuous deletion
       if (updatedNotes.length > 0) {
@@ -147,14 +159,27 @@ export default function Home() {
       return;
     }
     
-    // Create new note objects from atomic notes, linking them to the source
-    const newNotes: Note[] = atomicNotes.map((atomicNote, index) => ({
+    // Show preview modal instead of creating notes immediately
+    setAtomicNotesPreview({
+      potentialNotes: atomicNotes,
+      sourceNote: activeNote
+    });
+  };
+
+  const handleAtomicNotesApproval = (approvedNotes: Array<{ title: string; content: string }>) => {
+    if (!atomicNotesPreview || approvedNotes.length === 0) {
+      setAtomicNotesPreview(null);
+      return;
+    }
+
+    // Create new note objects from approved atomic notes
+    const newNotes: Note[] = approvedNotes.map((atomicNote, index) => ({
       id: `${Date.now()}-${index}`,
       title: atomicNote.title,
       content: atomicNote.content,
       createdAt: Date.now() + index, // Slight offset to maintain order
       isAtomic: true, // Mark as atomic note
-      sourceNoteId: activeNote.id, // Link to the source note
+      sourceNoteId: atomicNotesPreview.sourceNote.id, // Link to the source note
     }));
 
     // Add the new atomic notes to the beginning of the notes list
@@ -168,6 +193,13 @@ export default function Home() {
     if (isMobile) {
       setIsMobileSidebarOpen(false);
     }
+
+    // Close the preview modal
+    setAtomicNotesPreview(null);
+  };
+
+  const handleAtomicNotesCancel = () => {
+    setAtomicNotesPreview(null);
   };
 
   const closeAtomicCard = (noteId: string) => {
@@ -205,7 +237,7 @@ export default function Home() {
       );
     }
 
-    if (activeNote) {
+    if (activeNote && !activeNote.isAtomic) {
       return (
         <div className="h-full p-4 sm:p-6">
           <NoteEditor 
@@ -286,6 +318,16 @@ export default function Home() {
           {renderNoteContent()}
         </div>
       </div>
+
+      {/* Atomic Notes Preview Modal */}
+      {atomicNotesPreview && (
+        <AtomicNotesPreview
+          potentialNotes={atomicNotesPreview.potentialNotes}
+          sourceNoteTitle={atomicNotesPreview.sourceNote.title || "Untitled Note"}
+          onApprove={handleAtomicNotesApproval}
+          onCancel={handleAtomicNotesCancel}
+        />
+      )}
     </div>
   );
 }
