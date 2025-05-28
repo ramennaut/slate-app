@@ -1,8 +1,5 @@
-import { Plus } from "lucide-react";
-import { Button } from "./ui/button";
-
 interface HeaderProps {
-  onNewNote: () => void;
+  onNewNote?: () => void;
 }
 export default function Header({ onNewNote }: HeaderProps) {
   return (
@@ -19,10 +16,6 @@ export default function Header({ onNewNote }: HeaderProps) {
             Slate
           </h1>
         </div>
-        <Button onClick={onNewNote} size="default" className="font-medium shadow-sm">
-          <Plus className="h-4 w-4 mr-2" /> 
-          New Thought
-        </Button>
       </div>
     </header>
   );
