@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Save, Check, HelpCircle, X, Zap, ArrowLeft } from "lucide-react";
 import { splitIntoAtomicNotes } from "@/lib/utils";
+import NoteContentRenderer from "./note-content-renderer";
 
 interface NoteEditorProps {
   note: Note;
@@ -680,6 +681,19 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
               target.style.height = target.scrollHeight + "px";
             }}
           />
+          
+          {/* Show atomic note links for summary notes */}
+          {note.isSummary && notes && onSelectNote && (
+            <div className="mt-4 pt-4 border-t border-border/30">
+              <NoteContentRenderer
+                content={content}
+                notes={notes}
+                onSelectNote={onSelectNote}
+                className="text-sm text-muted-foreground"
+                linksOnly={true}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -745,7 +759,7 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
                 </div>
               </div>
             ) : (
-              /* Regular textarea for normal notes */
+              /* Regular textarea for all non-atomic notes */
               <textarea
                 ref={textareaRef}
                 value={content}

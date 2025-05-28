@@ -9,8 +9,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   File,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
+import { useState, useEffect } from "react";
 
 interface NotesSidebarProps {
   notes: Note[];
@@ -35,12 +38,29 @@ export default function NotesSidebar({
 }: NotesSidebarProps) {
   const activeNote = notes.find((note) => note.id === activeNoteId);
   
-  // Separate regular notes from atomic notes
-  const regularNotes = notes.filter(note => !note.isAtomic);
+  // State for active tab
+  const [activeTab, setActiveTab] = useState<'notes' | 'hub'>('notes');
+  
+  // State for collapsed sections within tabs
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  
+  // Separate notes into categories
+  const sourceNotes = notes.filter(note => !note.isAtomic && !note.isSummary);
   const atomicNotes = notes.filter(note => note.isAtomic);
+  const hubNotes = notes.filter(note => note.isSummary);
 
-  // Find the currently selected note (could be regular or atomic)
+  // Find the currently selected note (could be source, atomic, or hub)
   const selectedNote = notes.find(note => note.id === activeNoteId);
+
+  const toggleSection = (sectionName: string) => {
+    const newCollapsed = new Set(collapsedSections);
+    if (newCollapsed.has(sectionName)) {
+      newCollapsed.delete(sectionName);
+    } else {
+      newCollapsed.add(sectionName);
+    }
+    setCollapsedSections(newCollapsed);
+  };
 
   const renderNoteItem = (note: Note, isSubNote = false) => {
     const isActive = activeNoteId === note.id;
@@ -115,6 +135,16 @@ export default function NotesSidebar({
     );
   };
 
+  useEffect(() => {
+    if (activeNoteId && activeNote) {
+      if (hubNotes.some(note => note.id === activeNote.id)) {
+        setActiveTab('hub');
+      } else if (sourceNotes.some(note => note.id === activeNote.id) || atomicNotes.some(note => note.id === activeNote.id)) {
+        setActiveTab('notes');
+      }
+    }
+  }, [activeNoteId, hubNotes, sourceNotes, atomicNotes, activeNote]);
+
   return (
     <div
       className={`flex flex-col h-full bg-sidebar border-r border-sidebar-border overflow-hidden w-full`}
@@ -166,7 +196,9 @@ export default function NotesSidebar({
               selectedNote
                 ? selectedNote.isAtomic 
                   ? `Delete atomic note: "${selectedNote.content.slice(0, 30)}${selectedNote.content.length > 30 ? '...' : ''}"`
-                  : `Delete "${selectedNote.title || "Untitled Note"}"`
+                  : selectedNote.isSummary
+                    ? `Delete hub note: "${selectedNote.title}"`
+                    : `Delete "${selectedNote.title || "Untitled Note"}"`
                 : "No note selected"
             }
           >
@@ -190,6 +222,38 @@ export default function NotesSidebar({
         </div>
       </div>
 
+      {/* Tabs */}
+      {!isCollapsed && (
+        <div className="flex border-b border-sidebar-border/30 bg-sidebar">
+          <button
+            onClick={() => setActiveTab('notes')}
+            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+              activeTab === 'notes'
+                ? 'text-sidebar-primary border-b-2 border-sidebar-primary bg-sidebar-accent/30'
+                : 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/20'
+            }`}
+          >
+            Notes
+            <span className="ml-1.5 text-xs bg-sidebar-accent/60 px-1.5 py-0.5 rounded-full">
+              {sourceNotes.length + atomicNotes.length}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('hub')}
+            className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
+              activeTab === 'hub'
+                ? 'text-sidebar-primary border-b-2 border-sidebar-primary bg-sidebar-accent/30'
+                : 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/20'
+            }`}
+          >
+            Hub Notes
+            <span className="ml-1.5 text-xs bg-sidebar-accent/60 px-1.5 py-0.5 rounded-full">
+              {hubNotes.length}
+            </span>
+          </button>
+        </div>
+      )}
+
       <div
         className={`flex-1 overflow-hidden min-h-0 ${
           isCollapsed ? "hidden" : ""
@@ -206,72 +270,117 @@ export default function NotesSidebar({
         ) :
           <ScrollArea className="h-full w-full">
             <div className="p-2 space-y-4">
-              {/* Regular Notes Section */}
-              {regularNotes.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 px-1 mb-2">
-                    <h3 className="text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
-                      Notes
-                    </h3>
-                    <span className="text-xs text-sidebar-foreground/40 bg-sidebar-accent/60 px-1.5 py-0.5 rounded-full font-medium">
-                      {regularNotes.length}
-                    </span>
-                  </div>
-                  <div className="space-y-1">
-                    {regularNotes.map(note => renderNoteItem(note))}
-                  </div>
-                </div>
-              )}
-
-              {/* Atomic Notes Section */}
-              {atomicNotes.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-2 px-1 mb-2">
-                    <h3 className="text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
-                      Atomic Notes
-                    </h3>
-                    <span className="text-xs text-sidebar-foreground/40 bg-sidebar-accent/60 px-1.5 py-0.5 rounded-full font-medium">
-                      {atomicNotes.length}
-                    </span>
-                  </div>
-                  <div className="space-y-0">
-                    {atomicNotes.map(note => (
-                      <div
-                        key={note.id}
-                        onClick={() => onSelectNote(note)}
-                        className={`group relative flex items-center gap-1 rounded cursor-pointer transition-all duration-200 overflow-hidden border px-1 py-1 ${
-                          activeNoteId === note.id
-                            ? "bg-gradient-to-br from-sidebar-primary/10 to-sidebar-primary/5 border-sidebar-primary/20 shadow-sm ring-1 ring-sidebar-primary/10"
-                            : "bg-transparent border-transparent hover:border-sidebar-primary/15 hover:bg-sidebar-accent/40"
-                        }`}
+              {activeTab === 'notes' ? (
+                <>
+                  {/* Source Notes Section */}
+                  {sourceNotes.length > 0 && (
+                    <div>
+                      <div 
+                        className="flex items-center gap-2 px-1 mb-2 cursor-pointer hover:bg-sidebar-accent/30 rounded py-1 transition-colors"
+                        onClick={() => toggleSection('source')}
                       >
-                        <File className="h-3 w-3 text-sidebar-foreground/50 flex-shrink-0" />
-                        <div className="flex items-center justify-between gap-2 min-w-0 flex-1">
-                          <p className={`text-xs line-clamp-1 flex-1 ${
-                            activeNoteId === note.id
-                              ? "text-sidebar-primary/90"
-                              : "text-sidebar-foreground/75 group-hover:text-sidebar-foreground"
-                          }`}>
-                            {note.content}
-                          </p>
-                          <span className="text-xs text-sidebar-foreground/30 font-mono flex-shrink-0">
-                            {new Date(note.createdAt).toLocaleDateString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric' 
-                            })}
-                          </span>
-                        </div>
+                        {collapsedSections.has('source') ? (
+                          <ChevronRight className="h-3 w-3 text-sidebar-foreground/50" />
+                        ) : (
+                          <ChevronDown className="h-3 w-3 text-sidebar-foreground/50" />
+                        )}
+                        <h3 className="text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
+                          Source Notes
+                        </h3>
+                        <span className="text-xs text-sidebar-foreground/40 bg-sidebar-accent/60 px-1.5 py-0.5 rounded-full font-medium">
+                          {sourceNotes.length}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+                      {!collapsedSections.has('source') && (
+                        <div className="space-y-1">
+                          {sourceNotes.map(note => renderNoteItem(note))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-              {/* Empty state when only one type exists */}
-              {regularNotes.length === 0 && atomicNotes.length === 0 && (
-                <div className="space-y-1">
-                  {notes.map(note => renderNoteItem(note))}
-                </div>
+                  {/* Atomic Notes Section */}
+                  {atomicNotes.length > 0 && (
+                    <div>
+                      <div 
+                        className="flex items-center gap-2 px-1 mb-2 cursor-pointer hover:bg-sidebar-accent/30 rounded py-1 transition-colors"
+                        onClick={() => toggleSection('atomic')}
+                      >
+                        {collapsedSections.has('atomic') ? (
+                          <ChevronRight className="h-3 w-3 text-sidebar-foreground/50" />
+                        ) : (
+                          <ChevronDown className="h-3 w-3 text-sidebar-foreground/50" />
+                        )}
+                        <h3 className="text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
+                          Atomic Notes
+                        </h3>
+                        <span className="text-xs text-sidebar-foreground/40 bg-sidebar-accent/60 px-1.5 py-0.5 rounded-full font-medium">
+                          {atomicNotes.length}
+                        </span>
+                      </div>
+                      {!collapsedSections.has('atomic') && (
+                        <div className="space-y-0">
+                          {atomicNotes.map(note => (
+                            <div
+                              key={note.id}
+                              onClick={() => onSelectNote(note)}
+                              className={`group relative flex items-center gap-1 rounded cursor-pointer transition-all duration-200 overflow-hidden border px-1 py-1 ${
+                                activeNoteId === note.id
+                                  ? "bg-gradient-to-br from-sidebar-primary/10 to-sidebar-primary/5 border-sidebar-primary/20 shadow-sm ring-1 ring-sidebar-primary/10"
+                                  : "bg-transparent border-transparent hover:border-sidebar-primary/15 hover:bg-sidebar-accent/40"
+                              }`}
+                            >
+                              <File className="h-3 w-3 text-sidebar-foreground/50 flex-shrink-0" />
+                              <div className="flex items-center justify-between gap-2 min-w-0 flex-1">
+                                <p className={`text-xs line-clamp-1 flex-1 ${
+                                  activeNoteId === note.id
+                                    ? "text-sidebar-primary/90"
+                                    : "text-sidebar-foreground/75 group-hover:text-sidebar-foreground"
+                                }`}>
+                                  {note.content}
+                                </p>
+                                <span className="text-xs text-sidebar-foreground/30 font-mono flex-shrink-0">
+                                  {new Date(note.createdAt).toLocaleDateString('en-US', { 
+                                    month: 'short', 
+                                    day: 'numeric' 
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Empty state for Notes tab */}
+                  {sourceNotes.length === 0 && atomicNotes.length === 0 && (
+                    <div className="p-3 text-center">
+                      <EmptyState
+                        message="No notes yet... 📝"
+                        description="Create your first note to get started."
+                        icon={FileText}
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {/* Hub Notes Tab Content */}
+                  {hubNotes.length > 0 ? (
+                    <div className="space-y-1">
+                      {hubNotes.map(note => renderNoteItem(note))}
+                    </div>
+                  ) : (
+                    <div className="p-3 text-center">
+                      <EmptyState
+                        message="No hub notes yet... 🌐"
+                        description="Create summaries from your atomic notes to generate hub notes."
+                        icon={FileText}
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </ScrollArea>

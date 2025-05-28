@@ -5,4 +5,5 @@ export interface Note {
   createdAt: number;
   isAtomic?: boolean;
   sourceNoteId?: string;
+  isSummary?: boolean;
 }

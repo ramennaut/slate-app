@@ -206,6 +206,28 @@ export default function Home() {
     setOpenAtomicNotes(prev => prev.filter(note => note.id !== noteId));
   };
 
+  const createSummaryNote = (summaryContent: string) => {
+    const summaryNote: Note = {
+      id: Date.now().toString(),
+      title: `Summary - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+      content: summaryContent,
+      createdAt: Date.now(),
+      isSummary: true,
+    };
+    
+    // Add the summary note to the beginning of the notes list
+    setNotes([summaryNote, ...notes]);
+    
+    // Switch to the summary note in the editor
+    setActiveNote(summaryNote);
+    setOpenAtomicNotes([]); // Close flash card view
+    
+    // Close mobile sidebar if open
+    if (isMobile) {
+      setIsMobileSidebarOpen(false);
+    }
+  };
+
   const renderNoteContent = () => {
     if (!activeNote && notes.length === 0) {
       return (
@@ -232,6 +254,7 @@ export default function Home() {
           onSave={saveNote}
           onSelectNote={selectNote}
           onCloseCard={closeAtomicCard}
+          onCreateSummary={createSummaryNote}
           isMobile={isMobile}
         />
       );
