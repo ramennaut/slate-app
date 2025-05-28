@@ -38,6 +38,11 @@ export default function NoteEditor({
     return lastSavedRef.current.title !== title || normalizedLastContent !== normalizedCurrentContent;
   }, [title, content]);
 
+  // Helper function to detect platform for keyboard shortcuts
+  const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  const cmdKey = isMac ? '⌘' : 'Ctrl';
+  const altKey = isMac ? '⌥' : 'Alt';
+
   // Update local state when note prop changes (when switching notes)
   useEffect(() => {
     setTitle(note.title);
@@ -204,6 +209,46 @@ export default function NoteEditor({
         historyTimeoutRef.current = setTimeout(() => {
           addToHistory(markdownContent);
         }, 500);
+      }
+    }
+  };
+
+  // Handle paste events to strip formatting
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    
+    // Get plain text from clipboard
+    const plainText = e.clipboardData.getData('text/plain');
+    
+    if (plainText) {
+      // Insert plain text at cursor position
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        
+        // Split text by lines and insert with proper line breaks
+        const lines = plainText.split('\n');
+        const fragment = document.createDocumentFragment();
+        
+        lines.forEach((line, index) => {
+          if (index > 0) {
+            fragment.appendChild(document.createElement('br'));
+          }
+          if (line.trim()) {
+            fragment.appendChild(document.createTextNode(line));
+          }
+        });
+        
+        range.insertNode(fragment);
+        
+        // Move cursor to end of inserted content
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        
+        // Trigger content change to update state
+        handleContentChange();
       }
     }
   };
@@ -404,6 +449,24 @@ export default function NoteEditor({
               return;
             }
           }}
+          onPaste={(e) => {
+            e.preventDefault();
+            const plainText = e.clipboardData.getData('text/plain');
+            if (plainText) {
+              // Replace any line breaks with spaces for title
+              const cleanText = plainText.replace(/\n/g, ' ').trim();
+              const target = e.target as HTMLTextAreaElement;
+              const start = target.selectionStart;
+              const end = target.selectionEnd;
+              const newValue = title.substring(0, start) + cleanText + title.substring(end);
+              setTitle(newValue);
+              
+              // Set cursor position after pasted text
+              setTimeout(() => {
+                target.setSelectionRange(start + cleanText.length, start + cleanText.length);
+              }, 0);
+            }
+          }}
           placeholder="Note title"
           className="text-3xl font-bold border-none px-0 py-0 focus-visible:ring-0 focus:ring-0 focus:outline-none bg-transparent shadow-none rounded-none outline-none h-auto w-full placeholder:text-muted-foreground/40 break-words resize-none overflow-hidden"
           rows={1}
@@ -429,6 +492,7 @@ export default function NoteEditor({
               contentEditable
               onInput={handleContentChange}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 break-words whitespace-pre-wrap w-full overflow-y-auto"
               style={{
                 fontFamily: 'inherit',
@@ -470,28 +534,45 @@ export default function NoteEditor({
             <div className="space-y-2 text-sm">
               <div className="flex justify-between items-center">
                 <span>Bold text</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">Ctrl+B</kbd>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+B</kbd>
               </div>
               <div className="flex justify-between items-center">
                 <span>Italic text</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">Ctrl+I</kbd>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+I</kbd>
               </div>
               <div className="flex justify-between items-center">
                 <span>Undo</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">Ctrl+Z</kbd>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+Z</kbd>
               </div>
               <div className="flex justify-between items-center">
                 <span>Redo</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">Ctrl+Y</kbd>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+Y</kbd>
               </div>
               <div className="flex justify-between items-center">
                 <span>Save note</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">Ctrl+S</kbd>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+S</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Copy text</span>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+C</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Paste text (plain)</span>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+V</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Cut text</span>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+X</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Select all</span>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+A</kbd>
               </div>
               <div className="border-t border-border pt-2 mt-3">
                 <div className="text-xs text-muted-foreground">
                   <p className="mb-1">• Use <strong>• text</strong> for bullet points</p>
-                  <p>• Use <strong>1. text</strong> for numbered lists</p>
+                  <p className="mb-1">• Use <strong>1. text</strong> for numbered lists</p>
+                  <p>• Pasted content is automatically converted to plain text</p>
                 </div>
               </div>
             </div>
