@@ -19,7 +19,7 @@ export default function NoteEditor({
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef({ title: note.title, content: note.content });
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRef = useRef<HTMLDivElement>(null);
   const isInitialMountRef = useRef(true);
   const isAutoConvertingRef = useRef(false);
 
@@ -39,7 +39,42 @@ export default function NoteEditor({
     // Reset history when switching notes
     setHistory([note.content]);
     setHistoryIndex(0);
-  }, [note.id, note.title, note.content]); // Dependencies: note properties
+    
+    // Update editor content
+    if (textareaRef.current) {
+      textareaRef.current.innerHTML = markdownToHtml(note.content);
+    }
+  }, [note.id, note.title, note.content]);
+
+  // Function to convert markdown to HTML for display
+  const markdownToHtml = (text: string) => {
+    return text
+      // Bold: **text** -> <strong>text</strong>
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      // Italic: *text* -> <em>text</em>
+      .replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, '<em>$1</em>')
+      // Bullet points: • text -> <li>text</li>
+      .replace(/^(\s*)• (.+)$/gm, '$1<li>$2</li>')
+      // Numbered lists: 1. text -> <li>text</li>
+      .replace(/^(\s*)(\d+)\. (.+)$/gm, '$1<li>$3</li>')
+      // Line breaks
+      .replace(/\n/g, '<br>');
+  };
+
+  // Function to convert HTML back to markdown for storage
+  const htmlToMarkdown = (html: string) => {
+    return html
+      // Strong tags to markdown bold
+      .replace(/<strong>(.*?)<\/strong>/g, '**$1**')
+      // Em tags to markdown italic
+      .replace(/<em>(.*?)<\/em>/g, '*$1*')
+      // List items back to bullet points (simplified)
+      .replace(/<li>(.*?)<\/li>/g, '• $1')
+      // Line breaks back to newlines
+      .replace(/<br\s*\/?>/g, '\n')
+      // Remove any remaining HTML tags
+      .replace(/<[^>]*>/g, '');
+  };
 
   // Add content to history (for undo/redo)
   const addToHistory = useCallback((newContent: string) => {
@@ -66,6 +101,12 @@ export default function NoteEditor({
       const newIndex = historyIndex - 1;
       const previousContent = history[newIndex];
       setContent(previousContent);
+      
+      // Update editor content
+      if (textareaRef.current) {
+        textareaRef.current.innerHTML = markdownToHtml(previousContent);
+      }
+      
       setHistoryIndex(newIndex);
       
       // Reset the flag after a short delay
@@ -82,6 +123,12 @@ export default function NoteEditor({
       const newIndex = historyIndex + 1;
       const nextContent = history[newIndex];
       setContent(nextContent);
+      
+      // Update editor content
+      if (textareaRef.current) {
+        textareaRef.current.innerHTML = markdownToHtml(nextContent);
+      }
+      
       setHistoryIndex(newIndex);
       
       // Reset the flag after a short delay
@@ -91,22 +138,27 @@ export default function NoteEditor({
     }
   }, [history, historyIndex]);
 
-  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newContent = e.target.value;
-    setContent(newContent);
-    
-    // Clear previous timeout to avoid multiple entries for rapid typing
-    if (historyTimeoutRef.current) {
-      clearTimeout(historyTimeoutRef.current);
+  // Handle content changes
+  const handleContentChange = () => {
+    if (textareaRef.current) {
+      const htmlContent = textareaRef.current.innerHTML;
+      const markdownContent = htmlToMarkdown(htmlContent);
+      setContent(markdownContent);
+      
+      // Clear previous timeout to avoid multiple entries for rapid typing
+      if (historyTimeoutRef.current) {
+        clearTimeout(historyTimeoutRef.current);
+      }
+      
+      // Add to history with a small delay to avoid too many history entries during typing
+      historyTimeoutRef.current = setTimeout(() => {
+        addToHistory(markdownContent);
+      }, 500);
     }
-    
-    // Add to history with a small delay to avoid too many history entries during typing
-    historyTimeoutRef.current = setTimeout(() => {
-      addToHistory(newContent);
-    }, 500);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  // Handle key events
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     // Handle Ctrl+Z (Undo) and Ctrl+Y (Redo)
     if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
       e.preventDefault();
@@ -120,382 +172,21 @@ export default function NoteEditor({
       return;
     }
     
-    // Handle Ctrl+B (Bold) and Ctrl+I (Italic)
+    // Handle Ctrl+B (Bold) and Ctrl+I (Italic) - Native contentEditable commands
     if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
       e.preventDefault();
-      const textarea = e.currentTarget;
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const selectedText = content.substring(start, end);
-      
-      if (selectedText) {
-        // Check if already bold
-        const beforeText = content.substring(0, start);
-        const afterText = content.substring(end);
-        const isBold = beforeText.endsWith('**') && afterText.startsWith('**');
-        
-        let newContent;
-        let newSelectionStart, newSelectionEnd;
-        
-        if (isBold) {
-          // Remove bold formatting
-          newContent = beforeText.slice(0, -2) + selectedText + afterText.slice(2);
-          newSelectionStart = start - 2;
-          newSelectionEnd = end - 2;
-        } else {
-          // Add bold formatting
-          newContent = beforeText + '**' + selectedText + '**' + afterText;
-          newSelectionStart = start + 2;
-          newSelectionEnd = end + 2;
-        }
-        
-        setContent(newContent);
-        
-        // Restore selection
-        setTimeout(() => {
-          if (textareaRef.current) {
-            textareaRef.current.setSelectionRange(newSelectionStart, newSelectionEnd);
-          }
-        }, 0);
-      }
+      document.execCommand('bold', false);
+      handleContentChange(); // Update content after formatting
       return;
     }
     
     if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
       e.preventDefault();
-      const textarea = e.currentTarget;
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const selectedText = content.substring(start, end);
-      
-      if (selectedText) {
-        // Check if already italic
-        const beforeText = content.substring(0, start);
-        const afterText = content.substring(end);
-        const isItalic = beforeText.endsWith('*') && afterText.startsWith('*') && 
-                        !(beforeText.endsWith('**') && afterText.startsWith('**'));
-        
-        let newContent;
-        let newSelectionStart, newSelectionEnd;
-        
-        if (isItalic) {
-          // Remove italic formatting
-          newContent = beforeText.slice(0, -1) + selectedText + afterText.slice(1);
-          newSelectionStart = start - 1;
-          newSelectionEnd = end - 1;
-        } else {
-          // Add italic formatting
-          newContent = beforeText + '*' + selectedText + '*' + afterText;
-          newSelectionStart = start + 1;
-          newSelectionEnd = end + 1;
-        }
-        
-        setContent(newContent);
-        
-        // Restore selection
-        setTimeout(() => {
-          if (textareaRef.current) {
-            textareaRef.current.setSelectionRange(newSelectionStart, newSelectionEnd);
-          }
-        }, 0);
-      }
+      document.execCommand('italic', false);
+      handleContentChange(); // Update content after formatting
       return;
     }
-    
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const textarea = e.currentTarget;
-      const cursorPosition = textarea.selectionStart;
-      const selectionEnd = textarea.selectionEnd;
-      
-      if (e.shiftKey) {
-        // Shift+Tab: Remove indentation
-        const textBeforeCursor = content.substring(0, cursorPosition);
-        const textAfterCursor = content.substring(selectionEnd);
-        
-        // Find the current line start
-        const lines = textBeforeCursor.split('\n');
-        const currentLineIndex = lines.length - 1;
-        const currentLine = lines[currentLineIndex];
-        
-        // Check if the line starts with spaces and remove up to 4 spaces
-        if (currentLine.startsWith('    ')) {
-          // Remove 4 spaces
-          lines[currentLineIndex] = currentLine.substring(4);
-          const newContent = lines.join('\n') + textAfterCursor;
-          setContent(newContent);
-          
-          // Set cursor position (move back by 4 spaces)
-          setTimeout(() => {
-            if (textareaRef.current) {
-              const newPosition = Math.max(0, cursorPosition - 4);
-              textareaRef.current.setSelectionRange(newPosition, newPosition);
-            }
-          }, 0);
-        } else if (currentLine.startsWith('   ')) {
-          // Remove 3 spaces
-          lines[currentLineIndex] = currentLine.substring(3);
-          const newContent = lines.join('\n') + textAfterCursor;
-          setContent(newContent);
-          
-          // Set cursor position (move back by 3 spaces)
-          setTimeout(() => {
-            if (textareaRef.current) {
-              const newPosition = Math.max(0, cursorPosition - 3);
-              textareaRef.current.setSelectionRange(newPosition, newPosition);
-            }
-          }, 0);
-        } else if (currentLine.startsWith('  ')) {
-          // Remove 2 spaces
-          lines[currentLineIndex] = currentLine.substring(2);
-          const newContent = lines.join('\n') + textAfterCursor;
-          setContent(newContent);
-          
-          // Set cursor position (move back by 2 spaces)
-          setTimeout(() => {
-            if (textareaRef.current) {
-              const newPosition = Math.max(0, cursorPosition - 2);
-              textareaRef.current.setSelectionRange(newPosition, newPosition);
-            }
-          }, 0);
-        } else if (currentLine.startsWith(' ')) {
-          // Remove 1 space
-          lines[currentLineIndex] = currentLine.substring(1);
-          const newContent = lines.join('\n') + textAfterCursor;
-          setContent(newContent);
-          
-          // Set cursor position (move back by 1 space)
-          setTimeout(() => {
-            if (textareaRef.current) {
-              const newPosition = Math.max(0, cursorPosition - 1);
-              textareaRef.current.setSelectionRange(newPosition, newPosition);
-            }
-          }, 0);
-        }
-      } else {
-        // Tab: Add indentation
-        const textBeforeCursor = content.substring(0, cursorPosition);
-        const textAfterCursor = content.substring(selectionEnd);
-        
-        // Find the current line
-        const lines = textBeforeCursor.split('\n');
-        const currentLineIndex = lines.length - 1;
-        const currentLine = lines[currentLineIndex];
-        
-        // Check if current line is a bullet point or numbered list
-        const bulletMatch = currentLine.match(/^(\s*)• (.*)$/);
-        const numberedMatch = currentLine.match(/^(\s*)(\d+)\. (.*)$/);
-        
-        if (bulletMatch || numberedMatch) {
-          if (numberedMatch) {
-            // For numbered lists: indent and reset to "1."
-            const indent = numberedMatch[1];
-            const numberedText = numberedMatch[3];
-            lines[currentLineIndex] = '    ' + indent + '1. ' + numberedText;
-            
-            // Renumber all subsequent items at the same original indentation level
-            const originalIndent = indent;
-            for (let i = currentLineIndex + 1; i < lines.length; i++) {
-              const line = lines[i];
-              const match = line.match(/^(\s*)(\d+)\. (.*)$/);
-              if (match && match[1] === originalIndent) {
-                // This is a numbered item at the same original level - renumber it
-                const currentNum = parseInt(match[2]);
-                const newNum = currentNum - 1; // Decrease by 1 since we moved one item to nested level
-                if (newNum > 0) {
-                  lines[i] = match[1] + newNum + '. ' + match[3];
-                }
-              } else if (match && match[1].length < originalIndent.length) {
-                // Hit a less indented item, stop renumbering
-                break;
-              }
-            }
-          } else if (bulletMatch) {
-            // For bullet points: just indent the entire line
-            lines[currentLineIndex] = '    ' + currentLine;
-          }
-          
-          const newContent = lines.join('\n') + textAfterCursor;
-          setContent(newContent);
-          
-          // Set cursor position (move forward by 4 spaces)
-          setTimeout(() => {
-            if (textareaRef.current) {
-              const newPosition = cursorPosition + 4;
-              textareaRef.current.setSelectionRange(newPosition, newPosition);
-            }
-          }, 0);
-        } else {
-          // Regular tab: Add indentation (4 spaces) at cursor position
-          const newContent = textBeforeCursor + '    ' + textAfterCursor;
-          setContent(newContent);
-          
-          // Set cursor position after the inserted spaces
-          setTimeout(() => {
-            if (textareaRef.current) {
-              const newPosition = cursorPosition + 4;
-              textareaRef.current.setSelectionRange(newPosition, newPosition);
-            }
-          }, 0);
-        }
-      }
-    } else if (e.key === 'Backspace') {
-      const textarea = e.currentTarget;
-      const cursorPosition = textarea.selectionStart;
-      const selectionEnd = textarea.selectionEnd;
-      
-      // Only handle if there's no text selection (cursor is just positioned)
-      if (cursorPosition === selectionEnd) {
-        const textBeforeCursor = content.substring(0, cursorPosition);
-        const textAfterCursor = content.substring(cursorPosition);
-        
-        // Find the current line
-        const lines = textBeforeCursor.split('\n');
-        const currentLineIndex = lines.length - 1;
-        const currentLine = lines[currentLineIndex];
-        
-        // Check if cursor is positioned right after leading spaces
-        const leadingSpacesMatch = currentLine.match(/^(\s*)/);
-        const leadingSpaces = leadingSpacesMatch ? leadingSpacesMatch[1] : '';
-        const cursorPositionInLine = cursorPosition - (textBeforeCursor.length - currentLine.length);
-        
-        // If cursor is right after leading spaces (and there are spaces to remove)
-        if (cursorPositionInLine === leadingSpaces.length && leadingSpaces.length > 0) {
-          e.preventDefault();
-          
-          // Remove up to 4 spaces, but not more than what's available
-          const spacesToRemove = Math.min(4, leadingSpaces.length);
-          const newLine = currentLine.substring(spacesToRemove);
-          lines[currentLineIndex] = newLine;
-          
-          const newContent = lines.join('\n') + textAfterCursor;
-          setContent(newContent);
-          
-          // Set cursor position (move back by the number of spaces removed)
-          setTimeout(() => {
-            if (textareaRef.current) {
-              const newPosition = Math.max(0, cursorPosition - spacesToRemove);
-              textareaRef.current.setSelectionRange(newPosition, newPosition);
-            }
-          }, 0);
-        }
-      }
-    } else if (e.key === 'Enter') {
-      const textarea = e.currentTarget;
-      const cursorPosition = textarea.selectionStart;
-      const textBeforeCursor = content.substring(0, cursorPosition);
-      const textAfterCursor = content.substring(cursorPosition);
-      
-      // Find the current line
-      const lines = textBeforeCursor.split('\n');
-      const currentLine = lines[lines.length - 1];
-      
-      // Check if current line is a bullet point
-      const bulletMatch = currentLine.match(/^(\s*)• (.*)$/);
-      
-      // Check if current line is a numbered list item
-      const numberedMatch = currentLine.match(/^(\s*)(\d+)\. (.*)$/);
-      
-      if (bulletMatch) {
-        e.preventDefault();
-        const indent = bulletMatch[1];
-        const bulletText = bulletMatch[2];
-        
-        // If the bullet point is empty, remove it and exit bullet mode
-        if (bulletText.trim() === '') {
-          const newContent = textBeforeCursor.replace(/\n\s*• $/, '\n') + textAfterCursor;
-          setContent(newContent);
-          
-          // Set cursor position
-          setTimeout(() => {
-            if (textareaRef.current) {
-              const newPosition = cursorPosition - (indent.length + 2);
-              textareaRef.current.setSelectionRange(newPosition, newPosition);
-            }
-          }, 0);
-        } else {
-          // Continue with new bullet point
-          const newContent = textBeforeCursor + '\n' + indent + '• ' + textAfterCursor;
-          setContent(newContent);
-          
-          // Set cursor position after the new bullet
-          setTimeout(() => {
-            if (textareaRef.current) {
-              const newPosition = cursorPosition + indent.length + 3;
-              textareaRef.current.setSelectionRange(newPosition, newPosition);
-            }
-          }, 0);
-        }
-      } else if (numberedMatch) {
-        e.preventDefault();
-        const indent = numberedMatch[1];
-        const currentNumber = parseInt(numberedMatch[2]);
-        const numberedText = numberedMatch[3];
-        
-        // If the numbered item is empty, remove it and exit numbered mode
-        if (numberedText.trim() === '') {
-          const newContent = textBeforeCursor.replace(/\n\s*\d+\. $/, '\n') + textAfterCursor;
-          setContent(newContent);
-          
-          // Set cursor position
-          setTimeout(() => {
-            if (textareaRef.current) {
-              const newPosition = cursorPosition - (indent.length + numberedMatch[2].length + 2);
-              textareaRef.current.setSelectionRange(newPosition, newPosition);
-            }
-          }, 0);
-        } else {
-          // Continue with next numbered item
-          const nextNumber = currentNumber + 1;
-          const newContent = textBeforeCursor + '\n' + indent + nextNumber + '. ' + textAfterCursor;
-          setContent(newContent);
-          
-          // Set cursor position after the new number
-          setTimeout(() => {
-            if (textareaRef.current) {
-              const newPosition = cursorPosition + indent.length + nextNumber.toString().length + 3;
-              textareaRef.current.setSelectionRange(newPosition, newPosition);
-            }
-          }, 0);
-        }
-      }
-    }
   };
-
-  // Handle automatic bullet point conversion
-  useEffect(() => {
-    const lines = content.split('\n');
-    let hasChanges = false;
-    
-    const processedLines = lines.map(line => {
-      // Convert "- " to bullet point at the beginning of a line
-      if (line.match(/^(\s*)- (.+)$/)) {
-        hasChanges = true;
-        return line.replace(/^(\s*)- (.+)$/, '$1• $2');
-      }
-      // Convert standalone "- " to bullet point
-      if (line.match(/^(\s*)- $/)) {
-        hasChanges = true;
-        return line.replace(/^(\s*)- $/, '$1• ');
-      }
-      return line;
-    });
-    
-    if (hasChanges) {
-      isAutoConvertingRef.current = true;
-      const newContent = processedLines.join('\n');
-      setContent(newContent);
-      
-      // Maintain cursor position
-      setTimeout(() => {
-        if (textareaRef.current) {
-          const cursorPos = textareaRef.current.selectionStart;
-          textareaRef.current.setSelectionRange(cursorPos, cursorPos);
-        }
-        isAutoConvertingRef.current = false;
-      }, 0);
-    }
-  }, [content]);
 
   // Use useCallback to memoize the autoSave function to prevent stale closures
   const autoSave = useCallback(() => {
@@ -622,7 +313,6 @@ export default function NoteEditor({
               e.preventDefault();
               if (textareaRef.current) {
                 textareaRef.current.focus();
-                textareaRef.current.setSelectionRange(0, 0);
               }
             }
           }}
@@ -643,19 +333,35 @@ export default function NoteEditor({
       
       {/* Content Section */}
       <div className="flex-1 flex flex-col">
-        <textarea
-          value={content}
-          onChange={handleContentChange}
-          onKeyDown={handleKeyDown}
-          placeholder="Write your note here..."
-          className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 placeholder:text-muted-foreground/40 break-words whitespace-pre-wrap w-full"
-          ref={textareaRef}
-          style={{
-            fontFamily: 'inherit',
-            fontSize: '16px',
-            lineHeight: '1.5em'
-          }}
-        />
+        {/* Editor Instructions */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-muted-foreground">
+              Use <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded">Ctrl+B</kbd> for bold, 
+              <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded ml-1">Ctrl+I</kbd> for italic
+            </span>
+          </div>
+        </div>
+
+        <div className="flex-1 flex">
+          {/* WYSIWYG Editor */}
+          <div className="flex flex-col flex-1">
+            <div
+              ref={textareaRef}
+              contentEditable
+              onInput={handleContentChange}
+              onKeyDown={handleKeyDown}
+              className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 break-words whitespace-pre-wrap w-full"
+              style={{
+                fontFamily: 'inherit',
+                fontSize: '16px',
+                lineHeight: '1.5em'
+              }}
+              suppressContentEditableWarning={true}
+              data-placeholder="Write your note here..."
+            />
+          </div>
+        </div>
       </div>
       
       {/* Footer Section */}
@@ -690,6 +396,37 @@ export default function NoteEditor({
         textarea::placeholder {
           color: hsl(var(--muted-foreground) / 0.4);
         }
+        
+        /* ContentEditable placeholder styling */
+        [contenteditable]:empty:before {
+          content: attr(data-placeholder);
+          color: hsl(var(--muted-foreground) / 0.4);
+          pointer-events: none;
+        }
+        
+        /* WYSIWYG editor styling */
+        [contenteditable] {
+          font-family: inherit;
+          position: relative;
+        }
+        
+        [contenteditable] strong {
+          font-weight: bold;
+        }
+        
+        [contenteditable] em {
+          font-style: italic;
+        }
+        
+        [contenteditable] li {
+          margin-left: 1.5em;
+          list-style-type: disc;
+        }
+        
+        [contenteditable]:focus {
+          outline: none;
+        }
+        
         .gray-lists textarea {
           background: 
             linear-gradient(transparent, transparent),
