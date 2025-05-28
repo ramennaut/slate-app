@@ -31,9 +31,9 @@ export default function EmptyState({
           {description}
         </p>
         {buttonText && (
-          <Button 
-            onClick={onButtonClick} 
-            size="sm" 
+          <Button
+            onClick={onButtonClick}
+            size="sm"
             className="font-medium shadow-sm w-full"
           >
             <Plus className="h-4 w-4 mr-2" />
