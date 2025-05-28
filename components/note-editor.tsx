@@ -4,7 +4,7 @@ import { Note } from "@/lib/types";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Save, Check, HelpCircle, X, Zap, ArrowLeft } from "lucide-react";
-import { splitIntoAtomicNotes } from "@/lib/utils";
+import { generateAtomicNotes } from "@/lib/openai";
 import NoteContentRenderer from "./note-content-renderer";
 
 interface NoteEditorProps {
@@ -23,6 +23,7 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
     "saved"
   );
   const [showHelp, setShowHelp] = useState(false);
+  const [isGeneratingAtomicNotes, setIsGeneratingAtomicNotes] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef({ title: note.title, content: note.content });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -638,12 +639,18 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
     }
   }, [title, saveStatus]);
 
-  const handleCreateAtomicNotes = () => {
-    const atomicNotes = splitIntoAtomicNotes(content);
+  const handleCreateAtomicNotes = async () => {
+    if (isGeneratingAtomicNotes) return;
+
+    setIsGeneratingAtomicNotes(true);
+
+    const atomicNotes = await generateAtomicNotes(content);
     
     if (onCreateAtomicNotes && atomicNotes.length > 0) {
       onCreateAtomicNotes(atomicNotes);
     }
+
+    setIsGeneratingAtomicNotes(false);
   };
 
   return (
@@ -873,11 +880,20 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
               onClick={handleCreateAtomicNotes}
               size="sm"
               className="font-medium"
-              disabled={!content.trim() || content.trim().length < 100}
+              disabled={!content.trim() || content.trim().length < 100 || isGeneratingAtomicNotes}
               title={content.trim().length < 100 ? "Note needs more content to split into atomic notes" : "Split this note into smaller, focused notes"}
             >
-              <Zap className="h-4 w-4 mr-2" />
-              Create Atomic Notes
+              {isGeneratingAtomicNotes ? (
+                <>
+                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Zap className="h-4 w-4 mr-2" />
+                  Create Atomic Notes
+                </>
+              )}
             </Button>
           )}
         </div>

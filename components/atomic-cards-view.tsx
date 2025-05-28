@@ -3,7 +3,7 @@
 import { Note } from "@/lib/types";
 import { useState } from "react";
 import { Button } from "./ui/button";
-import { ArrowLeft, X, Sparkles } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 
 interface AtomicCardsViewProps {
@@ -12,7 +12,6 @@ interface AtomicCardsViewProps {
   onSave: (note: Note) => void;
   onSelectNote: (note: Note) => void;
   onCloseCard: (noteId: string) => void;
-  onCreateSummary?: (summaryContent: string) => void;
   isMobile?: boolean;
 }
 
@@ -29,7 +28,6 @@ export default function AtomicCardsView({
   onSave,
   onSelectNote,
   onCloseCard,
-  onCreateSummary,
   isMobile
 }: AtomicCardsViewProps) {
   const [cardStates, setCardStates] = useState<CardState>({});
@@ -63,56 +61,6 @@ export default function AtomicCardsView({
       delete newState[note.id];
       return newState;
     });
-  };
-
-  const handleSummarize = () => {
-    if (!onCreateSummary) return;
-
-    // Get current content for all cards (including unsaved changes)
-    const cardContents = notes.map(note => ({
-      content: getCardContent(note),
-      id: note.id,
-      sourceTitle: allNotes.find(n => n.id === note.sourceNoteId)?.title || "Unknown Source"
-    }));
-
-    // Create summary content with clickable atomic note references
-    const summaryContent = `# Summary of Atomic Notes
-
-## Overview
-This summary synthesizes the key ideas from ${notes.length} atomic note${notes.length !== 1 ? 's' : ''} currently open in the flash card view.
-
-## Key Ideas
-
-${cardContents.map((card, index) => {
-  // Create a short preview of the content for the link text (first 30 characters)
-  const linkText = card.content.trim().substring(0, 30).replace(/\n/g, ' ') + (card.content.length > 30 ? '...' : '');
-  
-  return `### Idea ${index + 1}
-${card.content}
-
-*→ [${linkText}](atomic-note:${card.id})*
-
----`;
-}).join('\n\n')}
-
-## Synthesis
-*Add your synthesis and connections between these ideas here...*
-
-## Next Steps
-*What actions or further exploration do these ideas suggest?*
-
----
-
-**Source Cards:** ${cardContents.length} atomic note${cardContents.length !== 1 ? 's' : ''}
-**Generated:** ${new Date().toLocaleDateString('en-US', { 
-  year: 'numeric', 
-  month: 'long', 
-  day: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit'
-})}`;
-
-    onCreateSummary(summaryContent);
   };
 
   const renderCard = (note: Note) => {
@@ -221,18 +169,6 @@ ${card.content}
               {notes.length}
             </span>
           </div>
-          
-          {/* Summarize Button */}
-          {onCreateSummary && notes.length > 1 && (
-            <Button
-              onClick={handleSummarize}
-              size="sm"
-              className="font-medium"
-            >
-              <Sparkles className="h-4 w-4 mr-2" />
-              Summarize Ideas
-            </Button>
-          )}
         </div>
         <p className="text-sm text-muted-foreground/80 ml-6">
           Click and edit multiple notes simultaneously
