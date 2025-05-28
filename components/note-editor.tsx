@@ -3,7 +3,7 @@
 import { Note } from "@/lib/types";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
-import { Save, Check } from "lucide-react";
+import { Save, Check, HelpCircle, X } from "lucide-react";
 
 interface NoteEditorProps {
   note: Note;
@@ -17,6 +17,7 @@ export default function NoteEditor({
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [showHelp, setShowHelp] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef({ title: note.title, content: note.content });
   const textareaRef = useRef<HTMLDivElement>(null);
@@ -209,6 +210,13 @@ export default function NoteEditor({
       return;
     }
     
+    // Handle Ctrl+S (Save)
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      e.preventDefault();
+      handleManualSave();
+      return;
+    }
+    
     // Handle Ctrl+B (Bold) and Ctrl+I (Italic) - Native contentEditable commands
     if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
       e.preventDefault();
@@ -358,6 +366,12 @@ export default function NoteEditor({
                 textareaRef.current.focus();
               }
             }
+            // Handle Ctrl+S (Save)
+            if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+              e.preventDefault();
+              handleManualSave();
+              return;
+            }
           }}
           placeholder="Note title"
           className="text-3xl font-bold border-none px-0 py-0 focus-visible:ring-0 focus:ring-0 focus:outline-none bg-transparent shadow-none rounded-none outline-none h-auto w-full placeholder:text-muted-foreground/40 break-words resize-none overflow-hidden"
@@ -376,16 +390,6 @@ export default function NoteEditor({
       
       {/* Content Section */}
       <div className="flex-1 flex flex-col">
-        {/* Editor Instructions */}
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-muted-foreground">
-              Use <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded">Ctrl+B</kbd> for bold, 
-              <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded ml-1">Ctrl+I</kbd> for italic
-            </span>
-          </div>
-        </div>
-
         <div className="flex-1 flex">
           {/* WYSIWYG Editor */}
           <div className="flex flex-col flex-1">
@@ -405,6 +409,63 @@ export default function NoteEditor({
             />
           </div>
         </div>
+      </div>
+      
+      {/* Help Float Button */}
+      <div className="fixed bottom-6 right-6 z-50">
+        <Button
+          onClick={() => setShowHelp(!showHelp)}
+          size="sm"
+          variant="outline"
+          className="rounded-full w-10 h-10 p-0 shadow-lg hover:shadow-xl transition-shadow"
+        >
+          <HelpCircle className="h-4 w-4" />
+        </Button>
+        
+        {/* Help Popup */}
+        {showHelp && (
+          <div className="absolute bottom-12 right-0 w-80 bg-background border border-border rounded-lg shadow-xl p-4 z-50">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-sm">Keyboard Shortcuts</h3>
+              <Button
+                onClick={() => setShowHelp(false)}
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between items-center">
+                <span>Bold text</span>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">Ctrl+B</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Italic text</span>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">Ctrl+I</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Undo</span>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">Ctrl+Z</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Redo</span>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">Ctrl+Y</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span>Save note</span>
+                <kbd className="px-2 py-1 text-xs bg-muted rounded">Ctrl+S</kbd>
+              </div>
+              <div className="border-t border-border pt-2 mt-3">
+                <div className="text-xs text-muted-foreground">
+                  <p className="mb-1">• Use <strong>• text</strong> for bullet points</p>
+                  <p>• Use <strong>1. text</strong> for numbered lists</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Footer Section */}
