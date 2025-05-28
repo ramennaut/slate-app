@@ -41,7 +41,6 @@ export default function NoteEditor({
   // Helper function to detect platform for keyboard shortcuts
   const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
   const cmdKey = isMac ? '⌘' : 'Ctrl';
-  const altKey = isMac ? '⌥' : 'Alt';
 
   // Update local state when note prop changes (when switching notes)
   useEffect(() => {
@@ -58,6 +57,7 @@ export default function NoteEditor({
     if (textareaRef.current) {
       textareaRef.current.innerHTML = markdownToHtml(note.content);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.id]); // Only reset when note ID changes, not content
 
   // Separate effect to handle content updates from parent without resetting history
@@ -96,7 +96,7 @@ export default function NoteEditor({
   // Function to convert HTML back to markdown for storage
   const htmlToMarkdown = (html: string) => {
     // First, normalize the HTML by handling browser-specific formatting
-    let normalized = html
+    const normalized = html
       // Handle empty divs that browsers create for empty lines
       .replace(/<div><br\s*\/?><\/div>/g, '\n')
       .replace(/<div><\/div>/g, '\n')
@@ -247,7 +247,7 @@ export default function NoteEditor({
         const processElement = (element: Element): DocumentFragment => {
           const fragment = document.createDocumentFragment();
           
-          for (let node of Array.from(element.childNodes)) {
+          for (const node of Array.from(element.childNodes)) {
             if (node.nodeType === Node.TEXT_NODE) {
               // Preserve text nodes
               fragment.appendChild(document.createTextNode(node.textContent || ''));
@@ -456,7 +456,7 @@ export default function NoteEditor({
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [autoSave, title, content]);
+  }, [autoSave, title, content, hasUnsavedChanges]);
 
   // Cleanup on unmount
   useEffect(() => {

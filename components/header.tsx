@@ -1,7 +1,4 @@
-interface HeaderProps {
-  onNewNote?: () => void;
-}
-export default function Header({ onNewNote }: HeaderProps) {
+export default function Header() {
   return (
     <header className="border-b border-border/50 bg-background/80 backdrop-blur-sm flex-shrink-0 sticky top-0 z-10">
       <div className="flex justify-between items-center px-6 py-4">
