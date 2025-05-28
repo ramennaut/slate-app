@@ -213,29 +213,129 @@ export default function NoteEditor({
     }
   };
 
-  // Handle paste events to strip formatting
+  // Handle paste events to preserve formatting but normalize font styles
   const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault();
     
-    // Get plain text from clipboard
+    // Get both HTML and plain text from clipboard
+    const htmlContent = e.clipboardData.getData('text/html');
     const plainText = e.clipboardData.getData('text/plain');
     
+    if (htmlContent) {
+      // Clean and normalize the HTML content
+      const cleanHTML = (html: string) => {
+        // Create a temporary div to parse the HTML
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        
+        // Simple cleaning function that preserves structure
+        const processElement = (element: Element): DocumentFragment => {
+          const fragment = document.createDocumentFragment();
+          
+          for (let node of Array.from(element.childNodes)) {
+            if (node.nodeType === Node.TEXT_NODE) {
+              // Preserve text nodes
+              fragment.appendChild(document.createTextNode(node.textContent || ''));
+            } else if (node.nodeType === Node.ELEMENT_NODE) {
+              const el = node as Element;
+              const tagName = el.tagName.toLowerCase();
+              
+              switch (tagName) {
+                case 'br':
+                  fragment.appendChild(document.createElement('br'));
+                  break;
+                  
+                case 'p':
+                case 'div':
+                  // Convert paragraphs and divs to content with line breaks
+                  if (el.textContent?.trim()) {
+                    // Add line break if this isn't the first element
+                    if (fragment.childNodes.length > 0) {
+                      fragment.appendChild(document.createElement('br'));
+                    }
+                    fragment.appendChild(processElement(el));
+                  }
+                  break;
+                  
+                case 'strong':
+                case 'b':
+                  // Preserve bold formatting
+                  const strongEl = document.createElement('strong');
+                  strongEl.appendChild(processElement(el));
+                  fragment.appendChild(strongEl);
+                  break;
+                  
+                case 'em':
+                case 'i':
+                  // Preserve italic formatting
+                  const emEl = document.createElement('em');
+                  emEl.appendChild(processElement(el));
+                  fragment.appendChild(emEl);
+                  break;
+                  
+                case 'li':
+                  // Convert list items to bullet points
+                  fragment.appendChild(document.createTextNode('• '));
+                  fragment.appendChild(processElement(el));
+                  fragment.appendChild(document.createElement('br'));
+                  break;
+                  
+                case 'ul':
+                case 'ol':
+                  // Process list contents
+                  fragment.appendChild(processElement(el));
+                  break;
+                  
+                default:
+                  // For other elements, just extract the content
+                  fragment.appendChild(processElement(el));
+                  break;
+              }
+            }
+          }
+          
+          return fragment;
+        };
+        
+        return processElement(tempDiv);
+      };
+      
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+        
+        // Clean and insert the HTML content
+        const cleanedFragment = cleanHTML(htmlContent);
+        range.insertNode(cleanedFragment);
+        
+        // Move cursor to end of inserted content
+        range.collapse(false);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        
+        // Trigger content change to update state
+        handleContentChange();
+        return;
+      }
+    }
+    
+    // Fallback to plain text with preserved line breaks
     if (plainText) {
-      // Insert plain text at cursor position
       const selection = window.getSelection();
       if (selection && selection.rangeCount > 0) {
         const range = selection.getRangeAt(0);
         range.deleteContents();
         
         // Split text by lines and insert with proper line breaks
-        const lines = plainText.split('\n');
+        const lines = plainText.split(/\r?\n/);
         const fragment = document.createDocumentFragment();
         
         lines.forEach((line, index) => {
           if (index > 0) {
             fragment.appendChild(document.createElement('br'));
           }
-          if (line.trim()) {
+          if (line.length > 0) { // Include empty lines as breaks
             fragment.appendChild(document.createTextNode(line));
           }
         });
@@ -557,7 +657,7 @@ export default function NoteEditor({
                 <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+C</kbd>
               </div>
               <div className="flex justify-between items-center">
-                <span>Paste text (plain)</span>
+                <span>Paste text (smart)</span>
                 <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+V</kbd>
               </div>
               <div className="flex justify-between items-center">
@@ -572,7 +672,7 @@ export default function NoteEditor({
                 <div className="text-xs text-muted-foreground">
                   <p className="mb-1">• Use <strong>• text</strong> for bullet points</p>
                   <p className="mb-1">• Use <strong>1. text</strong> for numbered lists</p>
-                  <p>• Pasted content is automatically converted to plain text</p>
+                  <p>• Paste preserves formatting but normalizes fonts to Slate style</p>
                 </div>
               </div>
             </div>
