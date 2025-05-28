@@ -1,18 +1,16 @@
 import { Button } from "./ui/button";
-import { Plus, PanelLeftClose, Menu } from "lucide-react";
+import { Plus, Menu } from "lucide-react";
 
 interface HeaderProps {
   createNewNote: () => void;
   toggleSidebar: () => void;
   isMobile: boolean;
-  isSidebarCollapsed: boolean;
 }
 
 export default function Header({
   createNewNote,
   toggleSidebar,
   isMobile,
-  isSidebarCollapsed,
 }: HeaderProps) {
   return (
     <header className="border-b border-border/50 bg-background/80 backdrop-blur-sm flex-shrink-0 sticky top-0 z-10">
