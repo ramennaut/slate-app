@@ -261,7 +261,9 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       if (listInfo.type === 'unordered') {
         newListItem = `\n${listInfo.indent}${listInfo.marker} `;
       } else if (listInfo.type === 'ordered' && typeof listInfo.number === 'number') {
-        newListItem = `\n${listInfo.indent}${listInfo.number + 1}. `;
+        // Find the next number for this indentation level
+        const nextNumber = getNextOrderedNumber(text, cursorPos, listInfo.indent);
+        newListItem = `\n${listInfo.indent}${nextNumber}. `;
       }
       
       const newText = text.substring(0, cursorPos) + newListItem + text.substring(cursorPos);
@@ -283,6 +285,29 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     }
   };
 
+  // Helper function to get the next number for an ordered list at a specific indentation level
+  const getNextOrderedNumber = (text: string, cursorPos: number, indentLevel: string) => {
+    const lines = text.substring(0, cursorPos).split('\n');
+    let highestNumber = 0;
+    
+    // Look backwards through previous lines to find the highest number at this indentation level
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      const orderedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
+      
+      if (orderedMatch && orderedMatch[1] === indentLevel) {
+        const number = parseInt(orderedMatch[2]);
+        if (number > highestNumber) {
+          highestNumber = number;
+        }
+        // Once we find a match at this level, we can stop looking
+        break;
+      }
+    }
+    
+    return highestNumber + 1;
+  };
+
   // Function to handle Tab indentation
   const handleListIndent = () => {
     if (!textareaRef.current) return;
@@ -300,7 +325,16 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       const currentLine = lines[currentLineIndex];
       
       // Add four spaces for indentation
-      const newLine = '    ' + currentLine;
+      let newLine = '    ' + currentLine;
+      
+      // If this is an ordered list, reset numbering to 1 when indenting
+      if (listInfo.type === 'ordered') {
+        const indentedOrderedMatch = newLine.match(/^(\s*)\d+\.\s+(.*)$/);
+        if (indentedOrderedMatch) {
+          newLine = `${indentedOrderedMatch[1]}1. ${indentedOrderedMatch[2]}`;
+        }
+      }
+      
       lines[currentLineIndex] = newLine;
       
       const newText = lines.join('\n');

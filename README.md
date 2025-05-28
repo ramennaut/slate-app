@@ -27,6 +27,7 @@ A modern, clean note-taking application built with Next.js and TypeScript.
 #### List Navigation
 - **Continue List**: Press `Enter` to automatically create the next list item
 - **Indent**: Press `Tab` to indent the current list item (4 spaces)
+- **Nested Numbering**: Ordered lists reset to 1 when indented to a new level
 - **Unindent**: Press `Shift+Tab` to reduce indentation
 - **Smart Backspace**: Press `Backspace` in indented areas to remove entire indent levels
 - **End List**: Press `Enter` on an empty list item to end the list
@@ -35,14 +36,15 @@ A modern, clean note-taking application built with Next.js and TypeScript.
 ```
 1. First item
 2. Second item
-    - Nested bullet
-    - Another nested item
+    1. Nested item (resets to 1)
+    2. Another nested item
 3. Third item
 
 - Bullet point
 - Another bullet
-    1. Nested numbered item
+    1. Nested numbered item (starts at 1)
     2. Another nested number
+- Back to bullets
 ```
 
 ## Getting Started
