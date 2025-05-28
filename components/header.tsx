@@ -1,5 +1,5 @@
 import { Button } from "./ui/button";
-import { Plus, PanelLeftClose, PanelLeftOpen, Menu } from "lucide-react";
+import { Plus, PanelLeftClose, Menu } from "lucide-react";
 
 interface HeaderProps {
   createNewNote: () => void;

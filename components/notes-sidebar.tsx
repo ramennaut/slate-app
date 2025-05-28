@@ -19,7 +19,6 @@ interface NotesSidebarProps {
   activeNoteId?: string;
   isCollapsed: boolean;
   toggleSidebar: () => void;
-  isMobile: boolean;
 }
 
 export default function NotesSidebar({
@@ -30,7 +29,6 @@ export default function NotesSidebar({
   activeNoteId,
   isCollapsed,
   toggleSidebar,
-  isMobile,
 }: NotesSidebarProps) {
   const activeNote = notes.find((note) => note.id === activeNoteId);
 
