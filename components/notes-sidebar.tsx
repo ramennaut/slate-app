@@ -26,16 +26,6 @@ export default function NotesSidebar({
   toggleSidebar,
   isMobile
 }: NotesSidebarProps) {
-  const getPreviewText = (content: string) => {
-    // Remove bullet points and numbered lists for cleaner preview
-    const cleanContent = content
-      .replace(/^(\s*)•\s+/gm, '')
-      .replace(/^(\s*)\d+\.\s+/gm, '')
-      .replace(/\n+/g, ' ')
-      .trim();
-    return cleanContent;
-  };
-
   const activeNote = notes.find(note => note.id === activeNoteId);
 
   return (
@@ -121,16 +111,6 @@ export default function NotesSidebar({
                         }`}>
                           {note.title || "Untitled"}
                         </h3>
-                        
-                        {/* Content Preview - Single line only */}
-                        {previewText && (
-                          <div className="text-xs text-sidebar-foreground/50 leading-tight mb-1">
-                            <div className="line-clamp-1 truncate">
-                              {previewText.substring(0, 60)}
-                              {previewText.length > 60 ? "..." : ""}
-                            </div>
-                          </div>
-                        )}
                         
                         <p className="text-xs text-sidebar-foreground/35 font-normal">
                           {formatDate(note.createdAt)}
