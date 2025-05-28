@@ -74,10 +74,8 @@ export default function NotesSidebar({
           <div className="p-3 h-full overflow-auto">
             <EmptyState
               message="Nothing to see here... 👀"
-              buttonText="Add an idea"
               description="Create your first note to get started organizing your thoughts."
               icon={FileText}
-              onButtonClick={createNewNote}
             />
           </div>
         ) : (

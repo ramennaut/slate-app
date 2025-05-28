@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 
 interface EmptyStateProps {
   message: string;
-  buttonText: string;
+  buttonText?: string;
   description?: string;
   icon?: LucideIcon;
   onButtonClick?: () => void;
@@ -30,14 +30,16 @@ export default function EmptyState({
         <p className="text-sm text-sidebar-foreground/60 mb-6 leading-relaxed">
           {description}
         </p>
-        <Button 
-          onClick={onButtonClick} 
-          size="sm" 
-          className="font-medium shadow-sm w-full"
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          {buttonText}
-        </Button>
+        {buttonText && (
+          <Button 
+            onClick={onButtonClick} 
+            size="sm" 
+            className="font-medium shadow-sm w-full"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            {buttonText}
+          </Button>
+        )}
       </div>
     </div>
   );

@@ -78,7 +78,7 @@ export default function Home() {
         <EmptyState
           message="No thoughts, head empty? 🌀"
           buttonText="New Thought"
-          description="Welcome to Slate! Start capturing your thoughts and ideas in beautifully organized notes."
+          description="Start capturing your thoughts and ideas in beautifully organized notes."
           icon={Sparkles}
           onButtonClick={createNewNote}
         />
