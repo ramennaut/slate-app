@@ -8,9 +8,10 @@ import { Save, Check, HelpCircle, X } from "lucide-react";
 interface NoteEditorProps {
   note: Note;
   onSave: (note: Note) => void;
+  isMobile?: boolean;
 }
 
-export default function NoteEditor({ note, onSave }: NoteEditorProps) {
+export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) {
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
@@ -645,93 +646,95 @@ export default function NoteEditor({ note, onSave }: NoteEditorProps) {
       </div>
 
       {/* Help Float Button */}
-      <div className="fixed bottom-6 right-6 z-50" ref={helpRef}>
-        <Button
-          onClick={() => setShowHelp(!showHelp)}
-          size="sm"
-          variant="outline"
-          className="rounded-full w-10 h-10 p-0 shadow-lg hover:shadow-xl transition-shadow"
-        >
-          <HelpCircle className="h-4 w-4" />
-        </Button>
+      {!isMobile && (
+        <div className="fixed bottom-6 right-6 z-50" ref={helpRef}>
+          <Button
+            onClick={() => setShowHelp(!showHelp)}
+            size="sm"
+            variant="outline"
+            className="rounded-full w-10 h-10 p-0 shadow-lg hover:shadow-xl transition-shadow"
+          >
+            <HelpCircle className="h-4 w-4" />
+          </Button>
 
-        {/* Help Popup */}
-        {showHelp && (
-          <div className="absolute bottom-12 right-0 w-80 bg-background border border-border rounded-lg shadow-xl p-4 z-50">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-sm">Keyboard Shortcuts</h3>
-              <Button
-                onClick={() => setShowHelp(false)}
-                size="sm"
-                variant="ghost"
-                className="h-6 w-6 p-0"
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between items-center">
-                <span>Bold</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                  {cmdKey}+B
-                </kbd>
+          {/* Help Popup */}
+          {showHelp && (
+            <div className="absolute bottom-12 right-0 w-80 bg-background border border-border rounded-lg shadow-xl p-4 z-50">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-sm">Keyboard Shortcuts</h3>
+                <Button
+                  onClick={() => setShowHelp(false)}
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0"
+                >
+                  <X className="h-3 w-3" />
+                </Button>
               </div>
-              <div className="flex justify-between items-center">
-                <span>Italic</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                  {cmdKey}+I
-                </kbd>
-              </div>
-              <div className="border-t border-border pt-2 mt-2">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span>Undo</span>
-                    <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                      {cmdKey}+Z
-                    </kbd>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Redo</span>
-                    <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                      {cmdKey}+Y
-                    </kbd>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Copy</span>
-                    <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                      {cmdKey}+C
-                    </kbd>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Cut</span>
-                    <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                      {cmdKey}+X
-                    </kbd>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Paste</span>
-                    <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                      {cmdKey}+V
-                    </kbd>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Select all</span>
-                    <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                      {cmdKey}+A
-                    </kbd>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Save</span>
-                    <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                      {cmdKey}+S
-                    </kbd>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between items-center">
+                  <span>Bold</span>
+                  <kbd className="px-2 py-1 text-xs bg-muted rounded">
+                    {cmdKey}+B
+                  </kbd>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span>Italic</span>
+                  <kbd className="px-2 py-1 text-xs bg-muted rounded">
+                    {cmdKey}+I
+                  </kbd>
+                </div>
+                <div className="border-t border-border pt-2 mt-2">
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span>Undo</span>
+                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
+                        {cmdKey}+Z
+                      </kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Redo</span>
+                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
+                        {cmdKey}+Y
+                      </kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Copy</span>
+                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
+                        {cmdKey}+C
+                      </kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Cut</span>
+                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
+                        {cmdKey}+X
+                      </kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Paste</span>
+                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
+                        {cmdKey}+V
+                      </kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Select all</span>
+                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
+                        {cmdKey}+A
+                      </kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Save</span>
+                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
+                        {cmdKey}+S
+                      </kbd>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Footer Section */}
       <div className="flex justify-between items-center pt-6 mt-8 border-t border-border/30">
