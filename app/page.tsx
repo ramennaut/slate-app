@@ -56,9 +56,19 @@ export default function Home() {
   };
 
   const deleteNote = (id: string) => {
-    setNotes(notes.filter((note) => note.id !== id));
+    const noteIndex = notes.findIndex(note => note.id === id);
+    const updatedNotes = notes.filter((note) => note.id !== id);
+    setNotes(updatedNotes);
+    
     if (activeNote && activeNote.id === id) {
-      setActiveNote(null);
+      // Auto-select the next note for continuous deletion
+      if (updatedNotes.length > 0) {
+        // Try to select the note at the same index, or the previous one if we deleted the last note
+        const nextIndex = noteIndex < updatedNotes.length ? noteIndex : updatedNotes.length - 1;
+        setActiveNote(updatedNotes[nextIndex]);
+      } else {
+        setActiveNote(null);
+      }
     }
   };
 

@@ -51,16 +51,20 @@ export default function NotesSidebar({
           >
             <Plus className="h-3.5 w-3.5" />
           </Button>
-          {activeNote && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-sidebar-foreground/70 hover:text-destructive hover:bg-destructive/10 rounded-md transition-all duration-200 flex-shrink-0"
-              onClick={() => onDeleteNote(activeNote.id)}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`h-7 w-7 rounded-md transition-all duration-200 flex-shrink-0 ${
+              activeNote 
+                ? "text-sidebar-foreground/70 hover:text-destructive hover:bg-destructive/10" 
+                : "text-sidebar-foreground/40 cursor-not-allowed"
+            }`}
+            onClick={() => activeNote && onDeleteNote(activeNote.id)}
+            disabled={!activeNote}
+            title={activeNote ? `Delete "${activeNote.title || 'Untitled Note'}"` : "No note selected"}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
         </div>
       </div>
 
