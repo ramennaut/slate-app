@@ -143,9 +143,22 @@ export default function Home() {
 
     if (activeNote) {
       return (
-        <NoteEditor 
-          note={activeNote} 
-          onSave={saveNote} 
+        <div className="h-full p-4 sm:p-6">
+          <NoteEditor 
+            note={activeNote} 
+            onSave={saveNote} 
+          />
+        </div>
+      );
+    }
+    
+    // When notes exist but no note is selected
+    if (!activeNote && notes.length > 0) {
+      return (
+        <EmptyState
+          message="Select a note to start editing"
+          description="Choose a note from the sidebar to view and edit its content."
+          icon={Sparkles}
         />
       );
     }
@@ -168,11 +181,15 @@ export default function Home() {
       <div className="flex flex-1 overflow-hidden"> {/* Parent overflow-hidden is key for clipping */} 
         {/* Unified Sidebar Container */} 
         <div 
-          className={`transition-all duration-300 ease-in-out flex-shrink-0 h-full overflow-hidden ${ 
+          className={`transition-all duration-300 ease-in-out overflow-hidden ${ 
             isMobile 
-              ? (isMobileSidebarOpen ? 'w-80' : 'w-0') 
-              : (isSidebarCollapsed ? 'w-16' : 'w-80') 
+              ? 'fixed left-0 z-50' + (isMobileSidebarOpen ? ' w-80' : ' w-0')
+              : 'flex-shrink-0 h-full' + (isSidebarCollapsed ? ' w-16' : ' w-80')
           }`}
+          style={isMobile ? {
+            top: 'calc(2rem + 24px + 1px)', // h-8 (32px) + py-3 (24px) + border (1px) = 57px
+            height: 'calc(100vh - 2rem - 24px - 1px)'
+          } : undefined}
         >
           {/* Render NotesSidebar only if it's supposed to be visible (width > 0), 
               or let NotesSidebar handle its internal empty state if container is w-0/w-16. 
@@ -193,14 +210,12 @@ export default function Home() {
 
         {/* Main Content Area - Modified for push effect, dimming, and click-to-close */} 
         <div 
-          className={`w-full flex-shrink-0 h-full overflow-y-auto transition-all duration-300 ease-in-out ${ 
+          className={`flex-1 h-full overflow-y-auto transition-all duration-300 ease-in-out ${ 
             isMobile && isMobileSidebarOpen ? 'opacity-50' : ''
           }`}
           onClick={handleContentAreaClick}
         >
-          <div className="h-full p-4 sm:p-6">
-            {renderNoteContent()}
-          </div>
+          {renderNoteContent()}
         </div>
       </div>
     </div>
