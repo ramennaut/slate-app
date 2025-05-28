@@ -99,7 +99,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col h-screen">
-      <Header onNewNote={createNewNote} />
+      <Header />
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <div className="w-80 flex-shrink-0">
