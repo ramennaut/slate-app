@@ -6,4 +6,6 @@ export interface Note {
   isAtomic?: boolean;
   sourceNoteId?: string;
   isSummary?: boolean;
+  linkedAtomicNoteIds?: string[];
+  hubTheme?: string;
 }

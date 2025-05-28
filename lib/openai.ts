@@ -11,6 +11,22 @@ export interface AtomicNote {
   content: string;
 }
 
+export interface TrainOfThought {
+  theme: string;
+  description: string;
+  atomicNoteIds: string[];
+  confidence: number;
+}
+
+export interface HubNoteAnalysis {
+  trainsOfThought: TrainOfThought[];
+  newThemes: TrainOfThought[];
+  existingThemeUpdates: Array<{
+    hubNoteId: string;
+    newAtomicNoteIds: string[];
+  }>;
+}
+
 export async function generateAtomicNotes(sourceContent: string): Promise<AtomicNote[]> {
   if (!sourceContent.trim()) {
     return [];
@@ -229,4 +245,167 @@ function fallbackSplitIntoAtomicNotes(content: string): AtomicNote[] {
   }
   
   return sections.filter(section => section.content.trim().length > 0);
+}
+
+export async function analyzeAtomicNotesForHubNotes(
+  atomicNotes: Array<{ id: string; content: string }>,
+  existingHubNotes: Array<{ id: string; title: string; content: string }>
+): Promise<HubNoteAnalysis> {
+  if (!atomicNotes.length) {
+    return {
+      trainsOfThought: [],
+      newThemes: [],
+      existingThemeUpdates: []
+    };
+  }
+
+  // Check if API key is available
+  if (!process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
+    console.warn('OpenAI API key not found, skipping hub note analysis');
+    return {
+      trainsOfThought: [],
+      newThemes: [],
+      existingThemeUpdates: []
+    };
+  }
+
+  try {
+    const atomicNotesText = atomicNotes.map((note, index) => 
+      `[${note.id}] ${note.content}`
+    ).join('\n\n');
+
+    const existingHubNotesText = existingHubNotes.length > 0 
+      ? existingHubNotes.map(hub => 
+          `Hub Note ID: ${hub.id}\nTitle: ${hub.title}\nContent: ${hub.content}`
+        ).join('\n\n---\n\n')
+      : 'No existing hub notes.';
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert at identifying conceptual connections and trains of thought between atomic notes. Your job is to analyze atomic notes and determine:
+
+1. What trains of thought (themes/concepts) exist among the atomic notes
+2. Which existing hub notes should be updated with new atomic notes
+3. What new hub notes should be created
+
+Rules:
+- A train of thought must connect at least 2 atomic notes
+- Trains of thought should be meaningful conceptual connections, not superficial word matches
+- Be conservative - only group notes that genuinely relate to the same concept/theme
+- For existing hub notes, only suggest updates if the atomic notes genuinely fit the existing theme
+- New themes should be distinct from existing hub note themes
+- The description should explain what the train of thought is ABOUT, not just that notes are connected
+
+IMPORTANT: Return ONLY a valid JSON object with this exact structure:
+{
+  "trainsOfThought": [
+    {
+      "theme": "Brief theme name (3-6 words)",
+      "description": "One sentence explaining what this train of thought is about - the actual subject matter, concepts, or ideas being explored",
+      "atomicNoteIds": ["id1", "id2", ...],
+      "confidence": 0.8
+    }
+  ],
+  "newThemes": [
+    {
+      "theme": "Theme name for new hub note",
+      "description": "One sentence explaining what this topic/train of thought is about - focus on the subject matter and key concepts",
+      "atomicNoteIds": ["id1", "id2", ...],
+      "confidence": 0.9
+    }
+  ],
+  "existingThemeUpdates": [
+    {
+      "hubNoteId": "existing-hub-id",
+      "newAtomicNoteIds": ["id1", "id2"]
+    }
+  ]
+}
+
+Confidence should be 0.7-1.0 (only suggest connections you're confident about).
+The description should focus on WHAT the topic is about, not HOW the notes are connected.`
+        },
+        {
+          role: "user",
+          content: `Analyze these atomic notes for trains of thought:
+
+ATOMIC NOTES:
+${atomicNotesText}
+
+EXISTING HUB NOTES:
+${existingHubNotesText}
+
+Please identify trains of thought and suggest hub note updates/creations.`
+        }
+      ],
+      temperature: 0.2,
+      max_tokens: 2000,
+    });
+
+    const result = response.choices[0]?.message?.content;
+    if (!result) {
+      throw new Error('No response from OpenAI');
+    }
+
+    // Clean the response
+    let cleanedResult = result.trim();
+    if (cleanedResult.startsWith('```json')) {
+      cleanedResult = cleanedResult.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleanedResult.startsWith('```')) {
+      cleanedResult = cleanedResult.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+
+    // Parse the JSON response
+    let analysis: HubNoteAnalysis;
+    try {
+      analysis = JSON.parse(cleanedResult) as HubNoteAnalysis;
+    } catch (parseError) {
+      console.error('Failed to parse OpenAI hub note analysis:', cleanedResult);
+      throw new Error(`Invalid JSON response from OpenAI: ${parseError}`);
+    }
+
+    // Validate the response structure
+    if (!analysis.trainsOfThought || !analysis.newThemes || !analysis.existingThemeUpdates) {
+      throw new Error('Invalid response format from OpenAI');
+    }
+
+    // Filter out low-confidence suggestions and validate structure
+    analysis.newThemes = analysis.newThemes.filter(theme => 
+      theme && 
+      theme.confidence >= 0.7 &&
+      theme.atomicNoteIds && 
+      theme.atomicNoteIds.length >= 2 &&
+      typeof theme.theme === 'string' &&
+      typeof theme.description === 'string'
+    );
+
+    analysis.existingThemeUpdates = analysis.existingThemeUpdates.filter(update =>
+      update &&
+      update.hubNoteId &&
+      update.newAtomicNoteIds &&
+      update.newAtomicNoteIds.length > 0
+    );
+
+    return analysis;
+
+  } catch (error) {
+    console.error('Error analyzing atomic notes for hub notes:', error);
+    return {
+      trainsOfThought: [],
+      newThemes: [],
+      existingThemeUpdates: []
+    };
+  }
+}
+
+export function generateHubNoteContent(
+  theme: string,
+  description: string,
+  linkedAtomicNotes: Array<{ id: string; content: string }>
+): string {
+  // Just return the AI-generated description as a simple 1-liner
+  return description;
 } 

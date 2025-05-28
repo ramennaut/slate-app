@@ -3,7 +3,7 @@
 import { Note } from "@/lib/types";
 import { useState } from "react";
 import { Button } from "./ui/button";
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft, X, Plus, Trash2 } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 
 interface AtomicCardsViewProps {
@@ -12,6 +12,8 @@ interface AtomicCardsViewProps {
   onSave: (note: Note) => void;
   onSelectNote: (note: Note) => void;
   onCloseCard: (noteId: string) => void;
+  onCreateTopic?: (selectedAtomicNotes: Note[]) => Promise<void>;
+  onDeleteNote?: (noteId: string) => void;
   isMobile?: boolean;
 }
 
@@ -28,9 +30,26 @@ export default function AtomicCardsView({
   onSave,
   onSelectNote,
   onCloseCard,
+  onCreateTopic,
+  onDeleteNote,
   isMobile
 }: AtomicCardsViewProps) {
   const [cardStates, setCardStates] = useState<CardState>({});
+  const [isCreatingTopic, setIsCreatingTopic] = useState(false);
+
+  const handleCreateTopic = async () => {
+    if (!onCreateTopic || notes.length < 2) return;
+    
+    setIsCreatingTopic(true);
+    
+    try {
+      await onCreateTopic(notes); // Use all notes in the flash card view
+    } catch (error) {
+      console.error('Failed to create topic:', error);
+    } finally {
+      setIsCreatingTopic(false);
+    }
+  };
 
   const getCardContent = (note: Note) => {
     return cardStates[note.id]?.content ?? note.content;
@@ -70,7 +89,9 @@ export default function AtomicCardsView({
     return (
       <div
         key={note.id}
-        className="bg-card border border-border rounded-2xl p-0 shadow-md hover:shadow-lg transition-all duration-300 w-full max-w-md group hover:scale-[1.02]"
+        className={`bg-card border rounded-2xl p-0 shadow-md hover:shadow-lg transition-all duration-300 w-full max-w-md group hover:scale-[1.02] ${
+          'border-border'
+        }`}
       >
         {/* Card Header */}
         <div className="px-5 pt-4 pb-3 border-b border-border/30 flex items-center justify-between">
@@ -79,7 +100,7 @@ export default function AtomicCardsView({
             <Button
               variant="ghost"
               size="sm"
-              className="text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 p-2 h-auto -ml-2 rounded-lg transition-colors"
+              className="text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 p-2 h-auto -ml-2 rounded-lg transition-colors flex-1"
               onClick={() => {
                 const sourceNote = allNotes.find(n => n.id === note.sourceNoteId);
                 if (sourceNote) {
@@ -131,21 +152,36 @@ export default function AtomicCardsView({
                 })}
               </span>
             </div>
-            {unsaved && (
-              <Button
-                size="sm"
-                onClick={() => saveCard(note)}
-                className="h-7 px-3 text-xs font-medium bg-primary/90 hover:bg-primary shadow-sm"
-              >
-                Save
-              </Button>
-            )}
-            {!unsaved && (
-              <div className="flex items-center gap-1 text-muted-foreground/60">
-                <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
-                <span className="text-xs">Saved</span>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              {unsaved && (
+                <Button
+                  size="sm"
+                  onClick={() => saveCard(note)}
+                  className="h-7 px-3 text-xs font-medium bg-primary/90 hover:bg-primary shadow-sm"
+                >
+                  Save
+                </Button>
+              )}
+              {!unsaved && (
+                <div className="flex items-center gap-1 text-muted-foreground/60">
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+                  <span className="text-xs">Saved</span>
+                </div>
+              )}
+              
+              {/* Delete button in lower right */}
+              {onDeleteNote && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 p-1.5 h-7 w-7 rounded-lg transition-colors"
+                  onClick={() => onDeleteNote(note.id)}
+                  title="Delete this atomic note"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -171,7 +207,7 @@ export default function AtomicCardsView({
           </div>
         </div>
         <p className="text-sm text-muted-foreground/80 ml-6">
-          Click and edit multiple notes simultaneously
+          {onCreateTopic ? "Create a topic from all notes in this view" : "Click and edit multiple notes simultaneously"}
         </p>
       </div>
       
@@ -180,6 +216,31 @@ export default function AtomicCardsView({
           {notes.map(note => renderCard(note))}
         </div>
       </ScrollArea>
+
+      {/* Floating Create Topic Button */}
+      {onCreateTopic && (
+        <div className="fixed bottom-6 right-6 z-50">
+          <Button
+            onClick={handleCreateTopic}
+            size="sm"
+            className="font-medium shadow-lg hover:shadow-xl transition-shadow"
+            disabled={notes.length < 2 || isCreatingTopic}
+            title={notes.length < 2 ? "Need at least 2 notes to create a topic" : "Create a topic from all notes in this view"}
+          >
+            {isCreatingTopic ? (
+              <>
+                <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Topic ({notes.length})
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 } 

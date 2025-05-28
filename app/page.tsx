@@ -10,6 +10,7 @@ import { loadNotes, saveNotes } from "@/lib/storage";
 import { Note } from "@/lib/types";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Sparkles } from "lucide-react";
+import { analyzeAtomicNotesForHubNotes, generateHubNoteContent } from "@/lib/openai";
 
 const getRandomDefaultTitle = (): string => {
   const defaultTitles = [
@@ -166,7 +167,7 @@ export default function Home() {
     });
   };
 
-  const handleAtomicNotesApproval = (approvedNotes: Array<{ title: string; content: string }>) => {
+  const handleAtomicNotesApproval = async (approvedNotes: Array<{ title: string; content: string }>) => {
     if (!atomicNotesPreview || approvedNotes.length === 0) {
       setAtomicNotesPreview(null);
       return;
@@ -183,7 +184,8 @@ export default function Home() {
     }));
 
     // Add the new atomic notes to the beginning of the notes list
-    setNotes([...newNotes, ...notes]);
+    const updatedNotes = [...newNotes, ...notes];
+    setNotes(updatedNotes);
     
     // Add all new atomic notes to the multi-card view
     setOpenAtomicNotes([...newNotes]);
@@ -196,6 +198,8 @@ export default function Home() {
 
     // Close the preview modal
     setAtomicNotesPreview(null);
+
+    // Remove automatic hub note generation - users will create topics manually
   };
 
   const handleAtomicNotesCancel = () => {
@@ -204,6 +208,53 @@ export default function Home() {
 
   const closeAtomicCard = (noteId: string) => {
     setOpenAtomicNotes(prev => prev.filter(note => note.id !== noteId));
+  };
+
+  const createTopicFromAtomicNotes = async (selectedAtomicNotes: Note[]) => {
+    if (selectedAtomicNotes.length < 2) {
+      console.warn('Need at least 2 atomic notes to create a topic');
+      return;
+    }
+
+    try {
+      // Use the existing analysis function to generate a topic for the selected notes
+      const analysis = await analyzeAtomicNotesForHubNotes(
+        selectedAtomicNotes.map(note => ({ id: note.id, content: note.content })),
+        [] // No existing hub notes to consider for this manual creation
+      );
+
+      if (analysis.newThemes.length > 0) {
+        const theme = analysis.newThemes[0]; // Take the first (and likely only) theme
+        
+        const hubNote: Note = {
+          id: `hub-${Date.now()}`,
+          title: theme.theme,
+          content: theme.description,
+          createdAt: Date.now(),
+          isSummary: true,
+          linkedAtomicNoteIds: selectedAtomicNotes.map(note => note.id),
+          hubTheme: theme.theme,
+        };
+
+        // Add the new hub note
+        setNotes([hubNote, ...notes]);
+        
+        // Switch to the new hub note
+        setActiveNote(hubNote);
+        setOpenAtomicNotes([]); // Close flash card view
+        
+        // Close mobile sidebar if open
+        if (isMobile) {
+          setIsMobileSidebarOpen(false);
+        }
+
+        console.log(`Created topic: ${theme.theme}`);
+      } else {
+        console.warn('Could not generate a topic from the selected atomic notes');
+      }
+    } catch (error) {
+      console.error('Error creating topic:', error);
+    }
   };
 
   const createSummaryNote = (summaryContent: string) => {
@@ -254,7 +305,8 @@ export default function Home() {
           onSave={saveNote}
           onSelectNote={selectNote}
           onCloseCard={closeAtomicCard}
-          onCreateSummary={createSummaryNote}
+          onCreateTopic={createTopicFromAtomicNotes}
+          onDeleteNote={deleteNote}
           isMobile={isMobile}
         />
       );

@@ -135,16 +135,6 @@ export default function NotesSidebar({
     );
   };
 
-  useEffect(() => {
-    if (activeNoteId && activeNote) {
-      if (hubNotes.some(note => note.id === activeNote.id)) {
-        setActiveTab('hub');
-      } else if (sourceNotes.some(note => note.id === activeNote.id) || atomicNotes.some(note => note.id === activeNote.id)) {
-        setActiveTab('notes');
-      }
-    }
-  }, [activeNoteId, hubNotes, sourceNotes, atomicNotes, activeNote]);
-
   return (
     <div
       className={`flex flex-col h-full bg-sidebar border-r border-sidebar-border overflow-hidden w-full`}
@@ -246,7 +236,7 @@ export default function NotesSidebar({
                 : 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/20'
             }`}
           >
-            Hub Notes
+            Topics
             <span className="ml-1.5 text-xs bg-sidebar-accent/60 px-1.5 py-0.5 rounded-full">
               {hubNotes.length}
             </span>
@@ -374,8 +364,8 @@ export default function NotesSidebar({
                   ) : (
                     <div className="p-3 text-center">
                       <EmptyState
-                        message="No hub notes yet... 🌐"
-                        description="Create summaries from your atomic notes to generate hub notes."
+                        message="No topics yet... 🌐"
+                        description="Create atomic notes to automatically generate topic connections."
                         icon={FileText}
                       />
                     </div>

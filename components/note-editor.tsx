@@ -6,6 +6,7 @@ import { Button } from "./ui/button";
 import { Save, Check, HelpCircle, X, Zap, ArrowLeft } from "lucide-react";
 import { generateAtomicNotes } from "@/lib/openai";
 import NoteContentRenderer from "./note-content-renderer";
+import HubNoteManager from "./hub-note-manager";
 
 interface NoteEditorProps {
   note: Note;
@@ -687,20 +688,21 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
               target.style.height = "auto";
               target.style.height = target.scrollHeight + "px";
             }}
+            readOnly={note.isSummary}
+            disabled={note.isSummary}
           />
           
-          {/* Show atomic note links for summary notes */}
-          {note.isSummary && notes && onSelectNote && (
-            <div className="mt-4 pt-4 border-t border-border/30">
-              <NoteContentRenderer
-                content={content}
-                notes={notes}
-                onSelectNote={onSelectNote}
-                className="text-sm text-muted-foreground"
-                linksOnly={true}
-              />
+          {/* Hub Note status indicator - right below title */}
+          {note.isSummary && (
+            <div className="mt-3 pt-3 border-t border-border/30">
+              <span className="flex items-center text-sm text-muted-foreground font-medium">
+                <div className="w-2 h-2 rounded-full bg-blue-500 mr-2"></div>
+                Hub Note • Read-only • Manage linked notes below
+              </span>
             </div>
           )}
+          
+          {/* Remove atomic note links for summary notes - they'll be managed below */}
         </div>
       )}
 
@@ -765,8 +767,29 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
                   </div>
                 </div>
               </div>
+            ) : note.isSummary ? (
+              /* Hub Note - Show only description, no content editing */
+              <div className="max-w-4xl mx-auto w-full">
+                <div className="p-6 bg-muted/20 rounded-lg border border-border/30">
+                  <p className="text-base text-muted-foreground leading-relaxed">
+                    {content}
+                  </p>
+                </div>
+                
+                {/* Hub Note Manager - Right after description */}
+                {notes && onSelectNote && (
+                  <div className="mt-6">
+                    <HubNoteManager
+                      hubNote={note}
+                      allAtomicNotes={notes.filter(n => n.isAtomic)}
+                      onUpdateHubNote={onSave}
+                      onSelectNote={onSelectNote}
+                    />
+                  </div>
+                )}
+              </div>
             ) : (
-              /* Regular textarea for all non-atomic notes */
+              /* Regular textarea for source notes */
               <textarea
                 ref={textareaRef}
                 value={content}
@@ -864,7 +887,7 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
           {saveStatus === "saved" && "✓ All changes saved"}
         </div>
         <div className="flex space-x-2">
-          {(hasUnsavedChanges() || saveStatus === "saving") && (
+          {!note.isSummary && (hasUnsavedChanges() || saveStatus === "saving") && (
             <Button
               onClick={handleManualSave}
               disabled={saveStatus === "saving"}
@@ -875,7 +898,7 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
             </Button>
           )}
           {/* Only show Create Atomic Notes button for regular notes */}
-          {!note.isAtomic && (
+          {!note.isAtomic && !note.isSummary && (
             <Button
               onClick={handleCreateAtomicNotes}
               size="sm"
