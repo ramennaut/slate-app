@@ -407,16 +407,16 @@ export default function NoteEditor({
       </div>
       
       {/* Content Section */}
-      <div className="flex-1 flex flex-col">
-        <div className="flex-1 flex">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex overflow-hidden">
           {/* WYSIWYG Editor */}
-          <div className="flex flex-col flex-1">
+          <div className="flex flex-col flex-1 overflow-hidden">
             <div
               ref={textareaRef}
               contentEditable
               onInput={handleContentChange}
               onKeyDown={handleKeyDown}
-              className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 break-words whitespace-pre-wrap w-full"
+              className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 break-words whitespace-pre-wrap w-full overflow-y-auto"
               style={{
                 fontFamily: 'inherit',
                 fontSize: '16px',
