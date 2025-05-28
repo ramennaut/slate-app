@@ -249,8 +249,8 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       if (listInfo.type === 'unordered') {
         newListItem = `\n${listInfo.indent}${listInfo.marker} `;
       } else if (listInfo.type === 'ordered' && typeof listInfo.number === 'number') {
-        // Find the next number for this indentation level
-        const nextNumber = getNextOrderedNumber(text, cursorPos, listInfo.indent);
+        // For normal list continuation, just increment the current number
+        const nextNumber = listInfo.number + 1;
         newListItem = `\n${listInfo.indent}${nextNumber}. `;
       }
       
@@ -271,35 +271,6 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
         textarea.setSelectionRange(newCursorPos, newCursorPos);
       }, 0);
     }
-  };
-
-  // Helper function to get the next number for an ordered list at a specific indentation level
-  const getNextOrderedNumber = (text: string, cursorPos: number, indentLevel: string) => {
-    const lines = text.substring(0, cursorPos).split('\n');
-    let highestNumber = 0;
-    
-    // Look backwards through previous lines to find the most recent number at this exact indentation level
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i];
-      const orderedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
-      
-      if (orderedMatch) {
-        const lineIndent = orderedMatch[1];
-        const number = parseInt(orderedMatch[2]);
-        
-        if (lineIndent === indentLevel) {
-          // Found a line at our exact indentation level
-          highestNumber = number;
-          break;
-        } else if (lineIndent.length < indentLevel.length) {
-          // We've hit a less indented line (parent level), stop looking
-          break;
-        }
-        // Continue looking if this line is more indented (child level)
-      }
-    }
-    
-    return highestNumber + 1;
   };
 
   // Function to handle Tab indentation
@@ -328,11 +299,11 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
           newLine = `${indentedOrderedMatch[1]}1. ${indentedOrderedMatch[2]}`;
         }
         
-        // Renumber subsequent items at the original indentation level
+        // Renumber subsequent items at the original level to fill the gap
         const originalIndent = listInfo.indent;
-        const currentNumber = listInfo.number;
+        const originalNumber = listInfo.number;
         
-        if (typeof currentNumber === 'number') {
+        if (typeof originalNumber === 'number') {
           for (let i = currentLineIndex + 1; i < lines.length; i++) {
             const subsequentLine = lines[i];
             const subsequentMatch = subsequentLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
@@ -342,22 +313,19 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
               const subsequentNumber = parseInt(subsequentMatch[2]);
               const subsequentContent = subsequentMatch[3];
               
-              if (subsequentIndent === originalIndent) {
-                // This is at the same level as the original item, renumber it
+              if (subsequentIndent === originalIndent && subsequentNumber > originalNumber) {
+                // This is at the same original level and after the indented item, shift it down
                 lines[i] = `${subsequentIndent}${subsequentNumber - 1}. ${subsequentContent}`;
               } else if (subsequentIndent.length < originalIndent.length) {
-                // This is at a parent level, also needs renumbering if it comes after
-                const adjustedNumber = subsequentNumber - 1;
-                if (adjustedNumber > 0) {
-                  lines[i] = `${subsequentIndent}${adjustedNumber}. ${subsequentContent}`;
-                }
+                // We've hit a parent level, stop renumbering
+                break;
               }
-              // Continue processing all subsequent numbered items
+              // Continue for child levels (more indented)
             } else if (subsequentLine.trim() === '') {
               // Empty line, continue
               continue;
             } else if (!subsequentLine.match(/^\s*[-*•]\s/)) {
-              // Non-list line (not bullet point), stop renumbering
+              // Non-list line, stop renumbering
               break;
             }
           }
@@ -420,7 +388,6 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     
     // If this was an ordered list item, renumber it for the new indentation level
     if (removedSpaces > 0 && orderedMatch) {
-      const originalIndentLevel = orderedMatch[1];
       const newIndentLevel = orderedMatch[1].substring(removedSpaces);
       const content = orderedMatch[3];
       
@@ -428,7 +395,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       const newNumber = getNextOrderedNumber(text, cursorPos, newIndentLevel);
       newLine = `${newIndentLevel}${newNumber}. ${content}`;
       
-      // Renumber subsequent items at the original (deeper) indentation level
+      // Renumber subsequent items at the target level to make room for this item
       for (let i = currentLineIndex + 1; i < lines.length; i++) {
         const subsequentLine = lines[i];
         const subsequentMatch = subsequentLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
@@ -438,16 +405,19 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
           const subsequentNumber = parseInt(subsequentMatch[2]);
           const subsequentContent = subsequentMatch[3];
           
-          if (subsequentIndent === originalIndentLevel) {
-            // This is at the same original level, renumber it down
-            lines[i] = `${subsequentIndent}${subsequentNumber - 1}. ${subsequentContent}`;
+          if (subsequentIndent === newIndentLevel && subsequentNumber >= newNumber) {
+            // This is at the same target level and at/after our new number, shift it up
+            lines[i] = `${subsequentIndent}${subsequentNumber + 1}. ${subsequentContent}`;
+          } else if (subsequentIndent.length < newIndentLevel.length) {
+            // We've hit a parent level, stop renumbering
+            break;
           }
-          // Continue processing all subsequent numbered items
+          // Continue for child levels (more indented)
         } else if (subsequentLine.trim() === '') {
           // Empty line, continue
           continue;
         } else if (!subsequentLine.match(/^\s*[-*•]\s/)) {
-          // Non-list line (not bullet point), stop renumbering
+          // Non-list line, stop renumbering
           break;
         }
       }
@@ -463,6 +433,33 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
         textarea.setSelectionRange(newCursorPos, newCursorPos);
       }, 0);
     }
+  };
+
+  // Helper function to get the next number for an ordered list at a specific indentation level
+  // Used only for unindenting items to find their correct number in the target level
+  const getNextOrderedNumber = (text: string, cursorPos: number, indentLevel: string) => {
+    const allLines = text.split('\n');
+    const currentLineIndex = text.substring(0, cursorPos).split('\n').length - 1;
+    
+    let highestNumber = 0;
+    
+    // Look through ALL lines up to the current position to find the highest number at this exact indentation level
+    for (let i = 0; i < currentLineIndex; i++) {
+      const line = allLines[i];
+      const orderedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
+      
+      if (orderedMatch) {
+        const lineIndent = orderedMatch[1];
+        const number = parseInt(orderedMatch[2]);
+        
+        if (lineIndent === indentLevel) {
+          // Found a line at our exact indentation level - track the highest number
+          highestNumber = Math.max(highestNumber, number);
+        }
+      }
+    }
+    
+    return highestNumber + 1;
   };
 
   // Function to handle smart backspace for indentation
