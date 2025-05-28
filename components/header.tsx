@@ -1,4 +1,11 @@
-export default function Header() {
+import { Button } from "./ui/button";
+import { Plus } from "lucide-react";
+
+interface HeaderProps {
+  createNewNote: () => void;
+}
+
+export default function Header({ createNewNote }: HeaderProps) {
   return (
     <header className="border-b border-border/50 bg-background/80 backdrop-blur-sm flex-shrink-0 sticky top-0 z-10">
       <div className="flex justify-between items-center px-6 py-4">
@@ -13,6 +20,10 @@ export default function Header() {
             Slate
           </h1>
         </div>
+        <Button onClick={createNewNote} size="sm" className="flex items-center gap-2 font-medium shadow-sm">
+          <Plus className="h-4 w-4" />
+          New Thought
+        </Button>
       </div>
     </header>
   );
