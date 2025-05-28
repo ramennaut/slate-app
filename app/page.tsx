@@ -158,7 +158,6 @@ export default function Home() {
                     activeNoteId={activeNote?.id}
                     isCollapsed={isSidebarCollapsed} // Pass down the state
                     toggleSidebar={handleToggleSidebar} // Pass down the toggle function
-                    isMobile={isMobile}
                 />
             </div>
         )}
@@ -174,7 +173,6 @@ export default function Home() {
                     activeNoteId={activeNote?.id}
                     isCollapsed={true} 
                     toggleSidebar={handleToggleSidebar} 
-                    isMobile={isMobile}
                 />
             </div>
          )}
