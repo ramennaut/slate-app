@@ -57,23 +57,53 @@ export default function NoteEditor({
       .replace(/^(\s*)• (.+)$/gm, '$1<li>$2</li>')
       // Numbered lists: 1. text -> <li>text</li>
       .replace(/^(\s*)(\d+)\. (.+)$/gm, '$1<li>$3</li>')
-      // Line breaks
+      // Handle multiple consecutive newlines (preserve paragraph spacing)
+      .replace(/\n\n\n/g, '<br><br><br>')
+      .replace(/\n\n/g, '<br><br>')
+      // Convert remaining single newlines to line breaks
       .replace(/\n/g, '<br>');
   };
 
   // Function to convert HTML back to markdown for storage
   const htmlToMarkdown = (html: string) => {
-    return html
+    // First, normalize the HTML by handling browser-specific formatting
+    let normalized = html
+      // Handle empty divs that browsers create for empty lines
+      .replace(/<div><br\s*\/?><\/div>/g, '\n')
+      .replace(/<div><\/div>/g, '\n')
+      // Handle divs with content (browsers often wrap lines in divs)
+      .replace(/<div>(.*?)<\/div>/g, (match, content) => {
+        // If the content is just whitespace or empty, treat as line break
+        if (!content.trim()) return '\n';
+        return '\n' + content;
+      })
+      // Handle paragraph elements
+      .replace(/<p><br\s*\/?><\/p>/g, '\n')
+      .replace(/<p><\/p>/g, '\n')
+      .replace(/<p>(.*?)<\/p>/g, (match, content) => {
+        if (!content.trim()) return '\n';
+        return '\n' + content;
+      });
+
+    return normalized
       // Strong tags to markdown bold
       .replace(/<strong>(.*?)<\/strong>/g, '**$1**')
+      .replace(/<b>(.*?)<\/b>/g, '**$1**')
       // Em tags to markdown italic
       .replace(/<em>(.*?)<\/em>/g, '*$1*')
+      .replace(/<i>(.*?)<\/i>/g, '*$1*')
       // List items back to bullet points (simplified)
       .replace(/<li>(.*?)<\/li>/g, '• $1')
       // Line breaks back to newlines
       .replace(/<br\s*\/?>/g, '\n')
       // Remove any remaining HTML tags
-      .replace(/<[^>]*>/g, '');
+      .replace(/<[^>]*>/g, '')
+      // Clean up excessive newlines while preserving intentional spacing
+      .replace(/\n{4,}/g, '\n\n\n')
+      // Remove leading newline if it exists
+      .replace(/^\n+/, '')
+      // Remove trailing newlines
+      .replace(/\n+$/, '');
   };
 
   // Add content to history (for undo/redo)
@@ -142,18 +172,25 @@ export default function NoteEditor({
   const handleContentChange = () => {
     if (textareaRef.current) {
       const htmlContent = textareaRef.current.innerHTML;
+      
+      // Instead of converting to markdown immediately, let's preserve the HTML structure
+      // and only convert when we actually need to save to storage
       const markdownContent = htmlToMarkdown(htmlContent);
-      setContent(markdownContent);
       
-      // Clear previous timeout to avoid multiple entries for rapid typing
-      if (historyTimeoutRef.current) {
-        clearTimeout(historyTimeoutRef.current);
+      // Only update if the content actually changed to avoid unnecessary re-renders
+      if (markdownContent !== content) {
+        setContent(markdownContent);
+        
+        // Clear previous timeout to avoid multiple entries for rapid typing
+        if (historyTimeoutRef.current) {
+          clearTimeout(historyTimeoutRef.current);
+        }
+        
+        // Add to history with a small delay to avoid too many history entries during typing
+        historyTimeoutRef.current = setTimeout(() => {
+          addToHistory(markdownContent);
+        }, 500);
       }
-      
-      // Add to history with a small delay to avoid too many history entries during typing
-      historyTimeoutRef.current = setTimeout(() => {
-        addToHistory(markdownContent);
-      }, 500);
     }
   };
 
@@ -196,8 +233,11 @@ export default function NoteEditor({
       content,
     };
     
-    // Only save if content has actually changed
-    if (lastSavedRef.current.title !== title || lastSavedRef.current.content !== content) {
+    // Only save if content has actually changed (normalize whitespace for comparison)
+    const normalizedLastContent = lastSavedRef.current.content.replace(/\s+/g, ' ').trim();
+    const normalizedCurrentContent = content.replace(/\s+/g, ' ').trim();
+    
+    if (lastSavedRef.current.title !== title || normalizedLastContent !== normalizedCurrentContent) {
       setSaveStatus('saving');
       onSave(updatedNote);
       lastSavedRef.current = { title, content };
@@ -225,8 +265,11 @@ export default function NoteEditor({
       return;
     }
 
-    // Only set timeout if there are actual changes to save
-    if (lastSavedRef.current.title !== title || lastSavedRef.current.content !== content) {
+    // Only set timeout if there are actual changes to save (normalize for comparison)
+    const normalizedLastContent = lastSavedRef.current.content.replace(/\s+/g, ' ').trim();
+    const normalizedCurrentContent = content.replace(/\s+/g, ' ').trim();
+    
+    if (lastSavedRef.current.title !== title || normalizedLastContent !== normalizedCurrentContent) {
       // Set new timeout for autosave
       timeoutRef.current = setTimeout(() => {
         autoSave();
