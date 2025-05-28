@@ -58,7 +58,22 @@ export default function NoteEditor({
     if (textareaRef.current) {
       textareaRef.current.innerHTML = markdownToHtml(note.content);
     }
-  }, [note.id, note.title, note.content]);
+  }, [note.id]); // Only reset when note ID changes, not content
+
+  // Separate effect to handle content updates from parent without resetting history
+  useEffect(() => {
+    // Only update if we're not in the middle of editing (to avoid conflicts with local changes)
+    if (saveStatus === 'saved' && !isInitialMountRef.current) {
+      setTitle(note.title);
+      setContent(note.content);
+      lastSavedRef.current = { title: note.title, content: note.content };
+      
+      // Update editor content without resetting history
+      if (textareaRef.current) {
+        textareaRef.current.innerHTML = markdownToHtml(note.content);
+      }
+    }
+  }, [note.title, note.content, saveStatus]);
 
   // Function to convert markdown to HTML for display
   const markdownToHtml = (text: string) => {
