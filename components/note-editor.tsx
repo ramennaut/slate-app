@@ -29,6 +29,7 @@ export default function NoteEditor({
   const [historyIndex, setHistoryIndex] = useState(0);
   const isUndoRedoRef = useRef(false);
   const historyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const helpRef = useRef<HTMLDivElement>(null);
 
   // Update local state when note prop changes (when switching notes)
   useEffect(() => {
@@ -352,6 +353,23 @@ export default function NoteEditor({
     }
   };
 
+  // Close help popup when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (helpRef.current && !helpRef.current.contains(event.target as Node)) {
+        setShowHelp(false);
+      }
+    };
+
+    if (showHelp) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showHelp]);
+
   return (
     <div className="h-full flex flex-col max-w-4xl mx-auto">
       {/* Title Section */}
@@ -412,7 +430,7 @@ export default function NoteEditor({
       </div>
       
       {/* Help Float Button */}
-      <div className="fixed bottom-6 right-6 z-50">
+      <div className="fixed bottom-6 right-6 z-50" ref={helpRef}>
         <Button
           onClick={() => setShowHelp(!showHelp)}
           size="sm"
