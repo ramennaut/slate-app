@@ -46,7 +46,7 @@ export default function NotesSidebar({
             {notes.length}
           </span>
         </div>
-        <div className={`flex items-center gap-0.5 flex-shrink-0 ${isCollapsed ? 'w-full justify-center' : 'ml-2'}`}>
+        <div className={`flex items-center gap-0.5 flex-shrink-0 ${isCollapsed ? 'w-full flex-col items-center justify-center space-y-1' : 'ml-2'}`}>
           <Button
             variant="ghost"
             size="icon"
@@ -56,29 +56,42 @@ export default function NotesSidebar({
           >
             <Plus className="h-3.5 w-3.5" />
           </Button>
+          {isCollapsed && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/80 rounded-md transition-all duration-200 flex-shrink-0"
+              onClick={toggleSidebar}
+              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"
-            className={`h-7 w-7 rounded-md transition-all duration-200 flex-shrink-0 ${isCollapsed ? 'hidden' : ''} ${
+            className={`h-7 w-7 rounded-md transition-all duration-200 flex-shrink-0 ${
               activeNote
                 ? "text-sidebar-foreground/70 hover:text-destructive hover:bg-destructive/10"
                 : "text-sidebar-foreground/40 cursor-not-allowed"
-            }`}
+            } ${isCollapsed && !activeNote ? 'opacity-50 cursor-not-allowed' : ''} ${isCollapsed ? '' : ''}`}
             onClick={() => activeNote && onDeleteNote(activeNote.id)}
             disabled={!activeNote}
             title={activeNote ? `Delete "${activeNote.title || 'Untitled Note'}"` : "No note selected"}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/80 rounded-md transition-all duration-200 flex-shrink-0"
-            onClick={toggleSidebar}
-            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-          </Button>
+          {!isCollapsed && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/80 rounded-md transition-all duration-200 flex-shrink-0"
+              onClick={toggleSidebar}
+              title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {isCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </Button>
+          )}
         </div>
       </div>
 
