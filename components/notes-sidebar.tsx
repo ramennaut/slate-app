@@ -80,7 +80,7 @@ export default function NotesSidebar({
           </div>
         ) : (
           <ScrollArea className="h-full w-full">
-            <div className="p-3 space-y-3">
+            <div className="p-2 space-y-1">
               {notes.map((note) => {
                 const isActive = activeNoteId === note.id;
                 const previewText = getPreviewText(note.content);
@@ -89,44 +89,42 @@ export default function NotesSidebar({
                   <div
                     key={note.id}
                     onClick={() => onSelectNote(note)}
-                    className={`group relative block p-4 rounded-xl cursor-pointer transition-all duration-300 overflow-hidden border ${
+                    className={`group relative block p-2 rounded-lg cursor-pointer transition-all duration-200 overflow-hidden border ${
                       isActive 
-                        ? "bg-gradient-to-br from-sidebar-primary/10 to-sidebar-primary/5 border-sidebar-primary/20 shadow-lg shadow-sidebar-primary/5 ring-1 ring-sidebar-primary/10" 
-                        : "bg-white/40 dark:bg-white/5 border-sidebar-border/30 hover:border-sidebar-primary/20 hover:bg-gradient-to-br hover:from-sidebar-accent/60 hover:to-sidebar-accent/30 hover:shadow-md"
+                        ? "bg-gradient-to-br from-sidebar-primary/10 to-sidebar-primary/5 border-sidebar-primary/20 shadow-sm ring-1 ring-sidebar-primary/10" 
+                        : "bg-white/20 dark:bg-white/3 border-sidebar-border/20 hover:border-sidebar-primary/15 hover:bg-sidebar-accent/40"
                     }`}
                   >
                     {/* Active Indicator */}
                     {isActive && (
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-sidebar-primary to-sidebar-primary/70" />
+                      <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-sidebar-primary" />
                     )}
                     
-                    <div className={`min-w-0 ${isActive ? 'pl-3' : ''}`}>
+                    <div className={`min-w-0 ${isActive ? 'pl-2' : ''}`}>
                       <div className="w-full min-w-0">
                         {/* Title */}
-                        <h3 className={`text-sm font-semibold mb-2 leading-snug line-clamp-2 ${
+                        <h3 className={`text-xs font-medium mb-1 leading-tight line-clamp-1 ${
                           isActive 
                             ? "text-sidebar-primary" 
                             : "text-sidebar-foreground group-hover:text-sidebar-foreground"
-                        }`} style={{ minHeight: '2.5rem' }}>
-                          {note.title || "Untitled Note"}
+                        }`}>
+                          {note.title || "Untitled"}
                         </h3>
                         
-                        {/* Content Preview */}
+                        {/* Content Preview - Single line only */}
                         {previewText && (
-                          <div className="text-xs text-sidebar-foreground/65 leading-relaxed mb-3 overflow-hidden">
-                            <div className="line-clamp-3" style={{ minHeight: '3rem' }}>
-                              {previewText.substring(0, 100)}
-                              {previewText.length > 100 ? "..." : ""}
+                          <div className="text-xs text-sidebar-foreground/50 leading-tight mb-1">
+                            <div className="line-clamp-1 truncate">
+                              {previewText.substring(0, 60)}
+                              {previewText.length > 60 ? "..." : ""}
                             </div>
                           </div>
                         )}
                         
-                        {/* Date and Status */}
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs text-sidebar-foreground/45 font-medium truncate">
-                            {formatDate(note.createdAt)}
-                          </p>
-                        </div>
+                        {/* Date */}
+                        <p className="text-xs text-sidebar-foreground/35 font-normal">
+                          {formatDate(note.createdAt)}
+                        </p>
                       </div>
                     </div>
                   </div>
