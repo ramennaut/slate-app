@@ -120,6 +120,88 @@ export default function NoteEditor({
       return;
     }
     
+    // Handle Ctrl+B (Bold) and Ctrl+I (Italic)
+    if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+      e.preventDefault();
+      const textarea = e.currentTarget;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selectedText = content.substring(start, end);
+      
+      if (selectedText) {
+        // Check if already bold
+        const beforeText = content.substring(0, start);
+        const afterText = content.substring(end);
+        const isBold = beforeText.endsWith('**') && afterText.startsWith('**');
+        
+        let newContent;
+        let newSelectionStart, newSelectionEnd;
+        
+        if (isBold) {
+          // Remove bold formatting
+          newContent = beforeText.slice(0, -2) + selectedText + afterText.slice(2);
+          newSelectionStart = start - 2;
+          newSelectionEnd = end - 2;
+        } else {
+          // Add bold formatting
+          newContent = beforeText + '**' + selectedText + '**' + afterText;
+          newSelectionStart = start + 2;
+          newSelectionEnd = end + 2;
+        }
+        
+        setContent(newContent);
+        
+        // Restore selection
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.setSelectionRange(newSelectionStart, newSelectionEnd);
+          }
+        }, 0);
+      }
+      return;
+    }
+    
+    if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+      e.preventDefault();
+      const textarea = e.currentTarget;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selectedText = content.substring(start, end);
+      
+      if (selectedText) {
+        // Check if already italic
+        const beforeText = content.substring(0, start);
+        const afterText = content.substring(end);
+        const isItalic = beforeText.endsWith('*') && afterText.startsWith('*') && 
+                        !(beforeText.endsWith('**') && afterText.startsWith('**'));
+        
+        let newContent;
+        let newSelectionStart, newSelectionEnd;
+        
+        if (isItalic) {
+          // Remove italic formatting
+          newContent = beforeText.slice(0, -1) + selectedText + afterText.slice(1);
+          newSelectionStart = start - 1;
+          newSelectionEnd = end - 1;
+        } else {
+          // Add italic formatting
+          newContent = beforeText + '*' + selectedText + '*' + afterText;
+          newSelectionStart = start + 1;
+          newSelectionEnd = end + 1;
+        }
+        
+        setContent(newContent);
+        
+        // Restore selection
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.setSelectionRange(newSelectionStart, newSelectionEnd);
+          }
+        }, 0);
+      }
+      return;
+    }
+    
     if (e.key === 'Tab') {
       e.preventDefault();
       const textarea = e.currentTarget;
