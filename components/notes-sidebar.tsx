@@ -36,9 +36,9 @@ export default function NotesSidebar({
 
   return (
     <div
-      className={`flex flex-col h-full bg-sidebar/50 backdrop-blur-sm border-r border-sidebar-border/60 overflow-hidden w-full`}
+      className={`flex flex-col h-full bg-sidebar border-r border-sidebar-border overflow-hidden w-full`}
     >
-      <div className="flex items-center justify-between px-3 py-3 border-b border-sidebar-border/30 bg-sidebar/30 flex-shrink-0 min-h-0">
+      <div className="flex items-center justify-between px-3 py-3 border-b border-sidebar-border/30 bg-sidebar flex-shrink-0 min-h-0">
         <div
           className={`flex items-center gap-2 min-w-0 flex-1 ${
             isCollapsed ? "hidden" : ""
