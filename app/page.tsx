@@ -164,7 +164,6 @@ export default function Home() {
         createNewNote={createNewNote} 
         toggleSidebar={handleToggleSidebar} 
         isMobile={isMobile} 
-        isSidebarCollapsed={isMobile ? !isMobileSidebarOpen : isSidebarCollapsed} 
       />
       <div className="flex flex-1 overflow-hidden"> {/* Parent overflow-hidden is key for clipping */} 
         {/* Unified Sidebar Container */} 
