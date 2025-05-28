@@ -29,19 +29,6 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
   const isUndoRedoRef = useRef(false);
   const historyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Helper function to compare content for meaningful changes
-  const hasContentChanged = useCallback((newContent: string, oldContent: string) => {
-    // Normalize both contents for comparison
-    const normalize = (content: string) => {
-      return content
-        .replace(/\s+/g, ' ')
-        .trim()
-        .toLowerCase();
-    };
-    
-    return normalize(newContent) !== normalize(oldContent);
-  }, []);
-
   // Helper function to check if there are unsaved changes (including title)
   const hasUnsavedChanges = useCallback(() => {
     return (
@@ -65,6 +52,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     // Reset history when note changes
     setHistory([note.content]);
     setHistoryIndex(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.id]); // Only reset when note ID changes, not content
 
   // Add content to history (for undo/redo)
@@ -435,7 +423,6 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       const originalIndentLevel = orderedMatch[1];
       const newIndentLevel = orderedMatch[1].substring(removedSpaces);
       const content = orderedMatch[3];
-      const originalNumber = parseInt(orderedMatch[2]);
       
       // Find the correct number for this new indentation level
       const newNumber = getNextOrderedNumber(text, cursorPos, newIndentLevel);
@@ -764,8 +751,8 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
                 <div className="border-t border-border pt-2 mt-2">
                   <div className="text-xs font-medium text-muted-foreground mb-2">Lists</div>
                   <div className="space-y-1 text-xs">
-                    <div>• Start with "1. " for numbered lists</div>
-                    <div>• Start with "- ", "* ", or "• " for bullet lists</div>
+                    <div>• Start with &ldquo;1. &rdquo; for numbered lists</div>
+                    <div>• Start with &ldquo;- &rdquo;, &ldquo;* &rdquo;, or &ldquo;• &rdquo; for bullet lists</div>
                     <div>• Press Enter to continue list</div>
                     <div>• Press Tab to indent (4 spaces), Shift+Tab to unindent</div>
                     <div>• Press Backspace to remove entire indent levels</div>
