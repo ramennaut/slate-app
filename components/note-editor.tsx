@@ -125,18 +125,18 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     const newContent = e.target.value;
     setContent(newContent);
 
-    // Set status to idle when content changes
-    if (saveStatus === "saved") {
-      setSaveStatus("idle");
-    }
+        // Set status to idle when content changes
+        if (saveStatus === "saved") {
+          setSaveStatus("idle");
+        }
 
-    // Clear previous timeout to avoid multiple entries for rapid typing
-    if (historyTimeoutRef.current) {
-      clearTimeout(historyTimeoutRef.current);
-    }
+        // Clear previous timeout to avoid multiple entries for rapid typing
+        if (historyTimeoutRef.current) {
+          clearTimeout(historyTimeoutRef.current);
+        }
 
     // Add to history with a delay to avoid too many entries
-    historyTimeoutRef.current = setTimeout(() => {
+        historyTimeoutRef.current = setTimeout(() => {
       if (!isUndoRedoRef.current) {
         addToHistory(newContent);
       }
@@ -147,7 +147,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Handle Ctrl+Z (Undo) and Ctrl+Y (Redo)
     if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
-      e.preventDefault();
+    e.preventDefault();
       undo();
       return;
     }
@@ -167,6 +167,250 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       handleManualSave();
       return;
     }
+
+    // Handle Enter key for list continuation
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleListContinuation();
+      return;
+    }
+
+    // Handle Tab for list indentation
+    if (e.key === "Tab") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        handleListUnindent();
+      } else {
+        handleListIndent();
+      }
+      return;
+    }
+
+    // Handle smart backspace for indentation
+    if (e.key === "Backspace") {
+      const shouldHandleSmartBackspace = handleSmartBackspace();
+      if (shouldHandleSmartBackspace) {
+        e.preventDefault();
+        return;
+      }
+    }
+  };
+
+  // Function to detect if current line is a list item
+  const getListInfo = (text: string, cursorPos: number) => {
+    const lines = text.substring(0, cursorPos).split('\n');
+    const currentLine = lines[lines.length - 1];
+    
+    // Check for unordered list patterns (-, *, •)
+    const unorderedMatch = currentLine.match(/^(\s*)([-*•])\s+(.*)$/);
+    if (unorderedMatch) {
+      return {
+        type: 'unordered',
+        indent: unorderedMatch[1],
+        marker: unorderedMatch[2],
+        content: unorderedMatch[3],
+        fullMatch: unorderedMatch[0]
+      };
+    }
+    
+    // Check for ordered list patterns (1., 2., etc.)
+    const orderedMatch = currentLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
+    if (orderedMatch) {
+      return {
+        type: 'ordered',
+        indent: orderedMatch[1],
+        number: parseInt(orderedMatch[2]),
+        content: orderedMatch[3],
+        fullMatch: orderedMatch[0]
+      };
+    }
+    
+    return null;
+  };
+
+  // Function to handle Enter key in lists
+  const handleListContinuation = () => {
+    if (!textareaRef.current) return;
+    
+    const textarea = textareaRef.current;
+    const cursorPos = textarea.selectionStart;
+    const text = textarea.value;
+    
+    const listInfo = getListInfo(text, cursorPos);
+    
+    if (listInfo) {
+      // If the current list item is empty, end the list
+      if (listInfo.content.trim() === '') {
+        // Remove the empty list item and add a normal line break
+        const lines = text.split('\n');
+        const currentLineIndex = text.substring(0, cursorPos).split('\n').length - 1;
+        lines[currentLineIndex] = listInfo.indent; // Keep just the indentation
+        
+        const newText = lines.join('\n');
+        const newCursorPos = cursorPos - listInfo.fullMatch.length + listInfo.indent.length;
+        
+        setContent(newText);
+        setTimeout(() => {
+          textarea.setSelectionRange(newCursorPos, newCursorPos);
+        }, 0);
+        return;
+      }
+      
+      // Continue the list with the next item
+      let newListItem = '';
+      if (listInfo.type === 'unordered') {
+        newListItem = `\n${listInfo.indent}${listInfo.marker} `;
+      } else if (listInfo.type === 'ordered' && typeof listInfo.number === 'number') {
+        newListItem = `\n${listInfo.indent}${listInfo.number + 1}. `;
+      }
+      
+      const newText = text.substring(0, cursorPos) + newListItem + text.substring(cursorPos);
+      const newCursorPos = cursorPos + newListItem.length;
+      
+      setContent(newText);
+      setTimeout(() => {
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    } else {
+      // Normal Enter behavior
+      const newText = text.substring(0, cursorPos) + '\n' + text.substring(cursorPos);
+      const newCursorPos = cursorPos + 1;
+      
+      setContent(newText);
+      setTimeout(() => {
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    }
+  };
+
+  // Function to handle Tab indentation
+  const handleListIndent = () => {
+    if (!textareaRef.current) return;
+    
+    const textarea = textareaRef.current;
+    const cursorPos = textarea.selectionStart;
+    const text = textarea.value;
+    
+    const listInfo = getListInfo(text, cursorPos);
+    
+    if (listInfo) {
+      // Add indentation to the current list item
+      const lines = text.split('\n');
+      const currentLineIndex = text.substring(0, cursorPos).split('\n').length - 1;
+      const currentLine = lines[currentLineIndex];
+      
+      // Add four spaces for indentation
+      const newLine = '    ' + currentLine;
+      lines[currentLineIndex] = newLine;
+      
+      const newText = lines.join('\n');
+      const newCursorPos = cursorPos + 4;
+      
+      setContent(newText);
+      setTimeout(() => {
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    } else {
+      // Regular tab behavior - add four spaces
+      const newText = text.substring(0, cursorPos) + '    ' + text.substring(cursorPos);
+      const newCursorPos = cursorPos + 4;
+      
+      setContent(newText);
+      setTimeout(() => {
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    }
+  };
+
+  // Function to handle Shift+Tab unindentation
+  const handleListUnindent = () => {
+    if (!textareaRef.current) return;
+    
+    const textarea = textareaRef.current;
+    const cursorPos = textarea.selectionStart;
+    const text = textarea.value;
+    
+    const lines = text.split('\n');
+    const currentLineIndex = text.substring(0, cursorPos).split('\n').length - 1;
+    const currentLine = lines[currentLineIndex];
+    
+    // Remove up to 4 spaces from the beginning of the line
+    let newLine = currentLine;
+    let removedSpaces = 0;
+    
+    if (currentLine.startsWith('    ')) {
+      newLine = currentLine.substring(4);
+      removedSpaces = 4;
+    } else if (currentLine.startsWith('   ')) {
+      newLine = currentLine.substring(3);
+      removedSpaces = 3;
+    } else if (currentLine.startsWith('  ')) {
+      newLine = currentLine.substring(2);
+      removedSpaces = 2;
+    } else if (currentLine.startsWith(' ')) {
+      newLine = currentLine.substring(1);
+      removedSpaces = 1;
+    }
+    
+    if (removedSpaces > 0) {
+      lines[currentLineIndex] = newLine;
+      const newText = lines.join('\n');
+      const newCursorPos = cursorPos - removedSpaces;
+      
+      setContent(newText);
+      setTimeout(() => {
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    }
+  };
+
+  // Function to handle smart backspace for indentation
+  const handleSmartBackspace = () => {
+    if (!textareaRef.current) return false;
+    
+    const textarea = textareaRef.current;
+    const cursorPos = textarea.selectionStart;
+    const text = textarea.value;
+    
+    // Only handle smart backspace if cursor is at the start or in the indentation area
+    const lines = text.split('\n');
+    const currentLineIndex = text.substring(0, cursorPos).split('\n').length - 1;
+    const currentLine = lines[currentLineIndex];
+    const lineStartPos = cursorPos - (text.substring(0, cursorPos).split('\n')[currentLineIndex]?.length || 0);
+    const positionInLine = cursorPos - lineStartPos;
+    
+    // Check if we're in the indentation area (only spaces before cursor in current line)
+    const beforeCursor = currentLine.substring(0, positionInLine);
+    const isInIndentation = /^\s*$/.test(beforeCursor) && beforeCursor.length > 0;
+    
+    if (isInIndentation) {
+      // Calculate how many spaces to remove (up to 4, or to the previous indent level)
+      let spacesToRemove = 0;
+      
+      if (beforeCursor.length >= 4 && beforeCursor.endsWith('    ')) {
+        spacesToRemove = 4;
+      } else if (beforeCursor.length >= 3 && beforeCursor.endsWith('   ')) {
+        spacesToRemove = 3;
+      } else if (beforeCursor.length >= 2 && beforeCursor.endsWith('  ')) {
+        spacesToRemove = 2;
+      } else if (beforeCursor.length >= 1 && beforeCursor.endsWith(' ')) {
+        spacesToRemove = 1;
+      }
+      
+      if (spacesToRemove > 0) {
+        const newText = text.substring(0, cursorPos - spacesToRemove) + text.substring(cursorPos);
+        const newCursorPos = cursorPos - spacesToRemove;
+        
+        setContent(newText);
+        setTimeout(() => {
+          textarea.setSelectionRange(newCursorPos, newCursorPos);
+        }, 0);
+        
+        return true; // Indicate that we handled the backspace
+      }
+    }
+    
+    return false; // Let normal backspace behavior handle it
   };
 
   // Use useCallback to memoize the autoSave function to prevent stale closures
@@ -201,7 +445,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     if (hasUnsavedChanges()) {
       // Set new timeout for autosave
       timeoutRef.current = setTimeout(() => {
-        autoSave();
+          autoSave();
       }, 2000); // 2 seconds delay
     }
 
@@ -383,24 +627,35 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
                 </Button>
               </div>
               <div className="space-y-2 text-sm">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span>Undo</span>
-                    <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                      {cmdKey}+Z
-                    </kbd>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Redo</span>
-                    <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                      {cmdKey}+Y
-                    </kbd>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span>Save</span>
-                    <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                      {cmdKey}+S
-                    </kbd>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span>Undo</span>
+                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
+                        {cmdKey}+Z
+                      </kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Redo</span>
+                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
+                        {cmdKey}+Y
+                      </kbd>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span>Save</span>
+                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
+                        {cmdKey}+S
+                      </kbd>
+                    </div>
+                </div>
+                <div className="border-t border-border pt-2 mt-2">
+                  <div className="text-xs font-medium text-muted-foreground mb-2">Lists</div>
+                  <div className="space-y-1 text-xs">
+                    <div>• Start with "1. " for numbered lists</div>
+                    <div>• Start with "- ", "* ", or "• " for bullet lists</div>
+                    <div>• Press Enter to continue list</div>
+                    <div>• Press Tab to indent (4 spaces), Shift+Tab to unindent</div>
+                    <div>• Press Backspace to remove entire indent levels</div>
+                    <div>• Press Enter on empty item to end list</div>
                   </div>
                 </div>
               </div>
