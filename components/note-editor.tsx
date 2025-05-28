@@ -647,28 +647,6 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
 
   return (
     <div className="h-full flex flex-col max-w-4xl mx-auto">
-      {/* Back to Source Note Link - Only show for atomic notes */}
-      {note.isAtomic && note.sourceNoteId && notes && onSelectNote && (
-        <div className="mb-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-sidebar-foreground/60 hover:text-sidebar-foreground p-1 h-auto"
-            onClick={() => {
-              const sourceNote = notes.find(n => n.id === note.sourceNoteId);
-              if (sourceNote) {
-                onSelectNote(sourceNote);
-              }
-            }}
-          >
-            <ArrowLeft className="h-3 w-3 mr-1" />
-            <span className="text-xs">
-              Back to {notes.find(n => n.id === note.sourceNoteId)?.title || "Source Note"}
-            </span>
-          </Button>
-        </div>
-      )}
-
       {/* Title Section - Only show for regular notes */}
       {!note.isAtomic && (
         <div className="pb-6 mb-8">
@@ -710,19 +688,78 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
         <div className="flex-1 flex overflow-hidden">
           {/* Simple Textarea Editor */}
           <div className="flex flex-col flex-1 overflow-hidden">
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={handleContentChange}
-              onKeyDown={handleKeyDown}
-              placeholder={note.isAtomic ? "Atomic note content..." : "Write your note here..."}
-              className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 w-full overflow-y-auto"
-              style={{
-                fontFamily: "inherit",
-                fontSize: "16px",
-                lineHeight: "1.5em",
-              }}
-            />
+            {note.isAtomic ? (
+              /* Card-style container for atomic notes */
+              <div className="bg-card border border-border rounded-xl p-0 shadow-lg hover:shadow-xl transition-shadow duration-200 max-w-4xl mx-auto w-full">
+                {/* Card Header with back link */}
+                {note.sourceNoteId && notes && onSelectNote && (
+                  <div className="px-8 pt-6 pb-3 border-b border-border/50">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-foreground p-1 h-auto -ml-1"
+                      onClick={() => {
+                        const sourceNote = notes.find(n => n.id === note.sourceNoteId);
+                        if (sourceNote) {
+                          onSelectNote(sourceNote);
+                        }
+                      }}
+                    >
+                      <ArrowLeft className="h-3 w-3 mr-1" />
+                      <span className="text-xs">
+                        {notes.find(n => n.id === note.sourceNoteId)?.title || "Source Note"}
+                      </span>
+                    </Button>
+                  </div>
+                )}
+                
+                {/* Card Content */}
+                <div className="p-8">
+                  <textarea
+                    ref={textareaRef}
+                    value={content}
+                    onChange={handleContentChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Write your atomic note here..."
+                    className="w-full resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-[400px] overflow-y-auto placeholder:text-muted-foreground/50"
+                    style={{
+                      fontFamily: "inherit",
+                      fontSize: "16px",
+                      lineHeight: "1.6em",
+                    }}
+                  />
+                </div>
+                
+                {/* Card Footer with metadata */}
+                <div className="px-8 pb-6 pt-3 border-t border-border/50">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Atomic Note</span>
+                    <span>{new Date(note.createdAt).toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* Regular textarea for normal notes */
+              <textarea
+                ref={textareaRef}
+                value={content}
+                onChange={handleContentChange}
+                onKeyDown={handleKeyDown}
+                placeholder="Write your note here..."
+                className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 w-full overflow-y-auto"
+                style={{
+                  fontFamily: "inherit",
+                  fontSize: "16px",
+                  lineHeight: "1.5em",
+                }}
+              />
+            )}
           </div>
         </div>
       </div>

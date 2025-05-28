@@ -4,6 +4,7 @@ import EmptyState from "@/components/empty-state";
 import Header from "@/components/header";
 import NotesSidebar from "@/components/notes-sidebar";
 import NoteEditor from "@/components/note-editor";
+import AtomicCardsView from "@/components/atomic-cards-view";
 import { loadNotes, saveNotes } from "@/lib/storage";
 import { Note } from "@/lib/types";
 import { useEffect, useState, useCallback, useRef } from "react";
@@ -24,6 +25,7 @@ const getRandomDefaultTitle = (): string => {
 export default function Home() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeNote, setActiveNote] = useState<Note | null>(null);
+  const [openAtomicNotes, setOpenAtomicNotes] = useState<Note[]>([]);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -94,7 +96,23 @@ export default function Home() {
   };
 
   const selectNote = (note: Note) => {
-    setActiveNote(note);
+    if (note.isAtomic) {
+      // For atomic notes, add to the multi-card view if not already open
+      setOpenAtomicNotes(prev => {
+        const isAlreadyOpen = prev.some(openNote => openNote.id === note.id);
+        if (isAlreadyOpen) {
+          return prev; // Don't add duplicates
+        }
+        return [...prev, note];
+      });
+      // Clear regular active note when viewing atomic notes
+      setActiveNote(null);
+    } else {
+      // For regular notes, set as active and clear atomic cards
+      setActiveNote(note);
+      setOpenAtomicNotes([]);
+    }
+    
     if (isMobile) { // On mobile, close sidebar when a note is selected to show the editor
       setIsMobileSidebarOpen(false);
     }
@@ -142,15 +160,18 @@ export default function Home() {
     // Add the new atomic notes to the beginning of the notes list
     setNotes([...newNotes, ...notes]);
     
-    // Select the first atomic note to show the result
-    if (newNotes.length > 0) {
-      setActiveNote(newNotes[0]);
-    }
+    // Add all new atomic notes to the multi-card view
+    setOpenAtomicNotes([...newNotes]);
+    setActiveNote(null); // Clear regular note when showing atomic cards
 
     // Close mobile sidebar if open
     if (isMobile) {
       setIsMobileSidebarOpen(false);
     }
+  };
+
+  const closeAtomicCard = (noteId: string) => {
+    setOpenAtomicNotes(prev => prev.filter(note => note.id !== noteId));
   };
 
   const renderNoteContent = () => {
@@ -166,6 +187,20 @@ export default function Home() {
             // If on mobile, ensure sidebar is closed after creating note from empty state
             if (isMobile) setIsMobileSidebarOpen(false);
           }}
+        />
+      );
+    }
+
+    // Show multi-card view if atomic notes are open
+    if (openAtomicNotes.length > 0) {
+      return (
+        <AtomicCardsView
+          notes={openAtomicNotes}
+          allNotes={notes}
+          onSave={saveNote}
+          onSelectNote={selectNote}
+          onCloseCard={closeAtomicCard}
+          isMobile={isMobile}
         />
       );
     }
