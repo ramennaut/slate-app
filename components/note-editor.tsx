@@ -16,7 +16,7 @@ export default function NoteEditor({
 }: NoteEditorProps) {
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('saved');
   const [showHelp, setShowHelp] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef({ title: note.title, content: note.content });
@@ -31,12 +31,19 @@ export default function NoteEditor({
   const historyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const helpRef = useRef<HTMLDivElement>(null);
 
+  // Helper function to check if there are unsaved changes
+  const hasUnsavedChanges = useCallback(() => {
+    const normalizedLastContent = lastSavedRef.current.content.replace(/\s+/g, ' ').trim();
+    const normalizedCurrentContent = content.replace(/\s+/g, ' ').trim();
+    return lastSavedRef.current.title !== title || normalizedLastContent !== normalizedCurrentContent;
+  }, [title, content]);
+
   // Update local state when note prop changes (when switching notes)
   useEffect(() => {
     setTitle(note.title);
     setContent(note.content);
     lastSavedRef.current = { title: note.title, content: note.content };
-    setSaveStatus('idle');
+    setSaveStatus('saved');
     isInitialMountRef.current = true;
     // Reset history when switching notes
     setHistory([note.content]);
@@ -183,6 +190,11 @@ export default function NoteEditor({
       if (markdownContent !== content) {
         setContent(markdownContent);
         
+        // Set status to idle when content changes
+        if (saveStatus === 'saved') {
+          setSaveStatus('idle');
+        }
+        
         // Clear previous timeout to avoid multiple entries for rapid typing
         if (historyTimeoutRef.current) {
           clearTimeout(historyTimeoutRef.current);
@@ -243,21 +255,17 @@ export default function NoteEditor({
     };
     
     // Only save if content has actually changed (normalize whitespace for comparison)
-    const normalizedLastContent = lastSavedRef.current.content.replace(/\s+/g, ' ').trim();
-    const normalizedCurrentContent = content.replace(/\s+/g, ' ').trim();
-    
-    if (lastSavedRef.current.title !== title || normalizedLastContent !== normalizedCurrentContent) {
+    if (hasUnsavedChanges()) {
       setSaveStatus('saving');
       onSave(updatedNote);
       lastSavedRef.current = { title, content };
       
-      // Show "saved" status briefly
+      // Keep status as "saved" after successful save
       setTimeout(() => {
         setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('idle'), 1500);
       }, 100);
     }
-  }, [note, title, content, onSave]);
+  }, [note, title, content, onSave, hasUnsavedChanges]);
 
   // Autosave effect
   useEffect(() => {
@@ -274,11 +282,8 @@ export default function NoteEditor({
       return;
     }
 
-    // Only set timeout if there are actual changes to save (normalize for comparison)
-    const normalizedLastContent = lastSavedRef.current.content.replace(/\s+/g, ' ').trim();
-    const normalizedCurrentContent = content.replace(/\s+/g, ' ').trim();
-    
-    if (lastSavedRef.current.title !== title || normalizedLastContent !== normalizedCurrentContent) {
+    // Only set timeout if there are actual changes to save
+    if (hasUnsavedChanges()) {
       // Set new timeout for autosave
       timeoutRef.current = setTimeout(() => {
         autoSave();
@@ -323,7 +328,6 @@ export default function NoteEditor({
     
     setTimeout(() => {
       setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 1500);
     }, 100);
   }, [note, title, content, onSave]);
 
@@ -369,6 +373,15 @@ export default function NoteEditor({
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showHelp]);
+
+  // Update save status when title changes
+  useEffect(() => {
+    if (!isInitialMountRef.current && title !== lastSavedRef.current.title) {
+      if (saveStatus === 'saved') {
+        setSaveStatus('idle');
+      }
+    }
+  }, [title, saveStatus]);
 
   return (
     <div className="h-full flex flex-col max-w-4xl mx-auto">
@@ -489,24 +502,26 @@ export default function NoteEditor({
       {/* Footer Section */}
       <div className="flex justify-between items-center pt-6 mt-8 border-t border-border/30">
         <div className="text-sm text-muted-foreground font-medium">
-          {saveStatus === 'idle' && "Changes autosave after 2 seconds"}
+          {saveStatus === 'idle' && hasUnsavedChanges() && "Unsaved changes • Autosave in 2 seconds"}
           {saveStatus === 'saving' && (
             <span className="flex items-center">
               <div className="animate-spin h-3 w-3 border-2 border-current border-t-transparent rounded-full mr-2" />
               Saving...
             </span>
           )}
-          {saveStatus === 'saved' && "✓ Autosaved"}
+          {saveStatus === 'saved' && "✓ All changes saved"}
         </div>
         <div className="flex space-x-2">
-          <Button 
-            onClick={handleManualSave}
-            disabled={saveStatus === 'saving'}
-            size="sm"
-            className="font-medium"
-          >
-            {getSaveButtonContent()}
-          </Button>
+          {(hasUnsavedChanges() || saveStatus === 'saving') && (
+            <Button 
+              onClick={handleManualSave}
+              disabled={saveStatus === 'saving'}
+              size="sm"
+              className="font-medium"
+            >
+              {getSaveButtonContent()}
+            </Button>
+          )}
         </div>
       </div>
       
