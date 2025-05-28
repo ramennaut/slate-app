@@ -633,46 +633,43 @@ export default function NoteEditor({
             </div>
             <div className="space-y-2 text-sm">
               <div className="flex justify-between items-center">
-                <span>Bold text</span>
+                <span>Bold</span>
                 <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+B</kbd>
               </div>
               <div className="flex justify-between items-center">
-                <span>Italic text</span>
+                <span>Italic</span>
                 <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+I</kbd>
               </div>
-              <div className="flex justify-between items-center">
-                <span>Undo</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+Z</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Redo</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+Y</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Save note</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+S</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Copy text</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+C</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Paste text (smart)</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+V</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Cut text</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+X</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span>Select all</span>
-                <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+A</kbd>
-              </div>
-              <div className="border-t border-border pt-2 mt-3">
-                <div className="text-xs text-muted-foreground">
-                  <p className="mb-1">• Use <strong>• text</strong> for bullet points</p>
-                  <p className="mb-1">• Use <strong>1. text</strong> for numbered lists</p>
-                  <p>• Paste preserves formatting but normalizes fonts to Slate style</p>
+              <div className="border-t border-border pt-2 mt-2">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span>Undo</span>
+                    <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+Z</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Redo</span>
+                    <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+Y</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Copy</span>
+                    <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+C</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Cut</span>
+                    <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+X</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Paste</span>
+                    <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+V</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Select all</span>
+                    <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+A</kbd>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span>Save</span>
+                    <kbd className="px-2 py-1 text-xs bg-muted rounded">{cmdKey}+S</kbd>
+                  </div>
                 </div>
               </div>
             </div>
