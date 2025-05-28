@@ -20,26 +20,33 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
   const [showHelp, setShowHelp] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef({ title: note.title, content: note.content });
-  const textareaRef = useRef<HTMLDivElement>(null);
-  const isInitialMountRef = useRef(true);
-  const isAutoConvertingRef = useRef(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const helpRef = useRef<HTMLDivElement>(null);
 
   // Undo/Redo functionality
   const [history, setHistory] = useState<string[]>([note.content]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const isUndoRedoRef = useRef(false);
   const historyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const helpRef = useRef<HTMLDivElement>(null);
 
-  // Helper function to check if there are unsaved changes
+  // Helper function to compare content for meaningful changes
+  const hasContentChanged = useCallback((newContent: string, oldContent: string) => {
+    // Normalize both contents for comparison
+    const normalize = (content: string) => {
+      return content
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+    };
+    
+    return normalize(newContent) !== normalize(oldContent);
+  }, []);
+
+  // Helper function to check if there are unsaved changes (including title)
   const hasUnsavedChanges = useCallback(() => {
-    const normalizedLastContent = lastSavedRef.current.content
-      .replace(/\s+/g, " ")
-      .trim();
-    const normalizedCurrentContent = content.replace(/\s+/g, " ").trim();
     return (
       lastSavedRef.current.title !== title ||
-      normalizedLastContent !== normalizedCurrentContent
+      lastSavedRef.current.content !== content
     );
   }, [title, content]);
 
@@ -49,102 +56,16 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     navigator.platform.toUpperCase().indexOf("MAC") >= 0;
   const cmdKey = isMac ? "⌘" : "Ctrl";
 
-  // Update local state when note prop changes (when switching notes)
+  // Initialize content when note changes
   useEffect(() => {
     setTitle(note.title);
     setContent(note.content);
     lastSavedRef.current = { title: note.title, content: note.content };
-    setSaveStatus("saved");
-    isInitialMountRef.current = true;
-    // Reset history when switching notes
+
+    // Reset history when note changes
     setHistory([note.content]);
     setHistoryIndex(0);
-
-    // Update editor content
-    if (textareaRef.current) {
-      textareaRef.current.innerHTML = markdownToHtml(note.content);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [note.id]); // Only reset when note ID changes, not content
-
-  // Separate effect to handle content updates from parent without resetting history
-  useEffect(() => {
-    // Only update if we're not in the middle of editing (to avoid conflicts with local changes)
-    if (saveStatus === "saved" && !isInitialMountRef.current) {
-      setTitle(note.title);
-      setContent(note.content);
-      lastSavedRef.current = { title: note.title, content: note.content };
-
-      // Update editor content without resetting history
-      if (textareaRef.current) {
-        textareaRef.current.innerHTML = markdownToHtml(note.content);
-      }
-    }
-  }, [note.title, note.content, saveStatus]);
-
-  // Function to convert markdown to HTML for display
-  const markdownToHtml = (text: string) => {
-    return (
-      text
-        // Bold: **text** -> <strong>text</strong>
-        .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-        // Italic: *text* -> <em>text</em>
-        .replace(/(?<!\*)\*([^*]+?)\*(?!\*)/g, "<em>$1</em>")
-        // Bullet points: • text -> <li>text</li>
-        .replace(/^(\s*)• (.+)$/gm, "$1<li>$2</li>")
-        // Numbered lists: 1. text -> <li>text</li>
-        .replace(/^(\s*)(\d+)\. (.+)$/gm, "$1<li>$3</li>")
-        // Handle multiple consecutive newlines (preserve paragraph spacing)
-        .replace(/\n\n\n/g, "<br><br><br>")
-        .replace(/\n\n/g, "<br><br>")
-        // Convert remaining single newlines to line breaks
-        .replace(/\n/g, "<br>")
-    );
-  };
-
-  // Function to convert HTML back to markdown for storage
-  const htmlToMarkdown = (html: string) => {
-    // First, normalize the HTML by handling browser-specific formatting
-    const normalized = html
-      // Handle empty divs that browsers create for empty lines
-      .replace(/<div><br\s*\/?><\/div>/g, "\n")
-      .replace(/<div><\/div>/g, "\n")
-      // Handle divs with content (browsers often wrap lines in divs)
-      .replace(/<div>(.*?)<\/div>/g, (match, content) => {
-        // If the content is just whitespace or empty, treat as line break
-        if (!content.trim()) return "\n";
-        return "\n" + content;
-      })
-      // Handle paragraph elements
-      .replace(/<p><br\s*\/?><\/p>/g, "\n")
-      .replace(/<p><\/p>/g, "\n")
-      .replace(/<p>(.*?)<\/p>/g, (match, content) => {
-        if (!content.trim()) return "\n";
-        return "\n" + content;
-      });
-
-    return (
-      normalized
-        // Strong tags to markdown bold
-        .replace(/<strong>(.*?)<\/strong>/g, "**$1**")
-        .replace(/<b>(.*?)<\/b>/g, "**$1**")
-        // Em tags to markdown italic
-        .replace(/<em>(.*?)<\/em>/g, "*$1*")
-        .replace(/<i>(.*?)<\/i>/g, "*$1*")
-        // List items back to bullet points (simplified)
-        .replace(/<li>(.*?)<\/li>/g, "• $1")
-        // Line breaks back to newlines
-        .replace(/<br\s*\/?>/g, "\n")
-        // Remove any remaining HTML tags
-        .replace(/<[^>]*>/g, "")
-        // Clean up excessive newlines while preserving intentional spacing
-        .replace(/\n{4,}/g, "\n\n\n")
-        // Remove leading newline if it exists
-        .replace(/^\n+/, "")
-        // Remove trailing newlines
-        .replace(/\n+$/, "")
-    );
-  };
 
   // Add content to history (for undo/redo)
   const addToHistory = useCallback(
@@ -174,12 +95,6 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       const newIndex = historyIndex - 1;
       const previousContent = history[newIndex];
       setContent(previousContent);
-
-      // Update editor content
-      if (textareaRef.current) {
-        textareaRef.current.innerHTML = markdownToHtml(previousContent);
-      }
-
       setHistoryIndex(newIndex);
 
       // Reset the flag after a short delay
@@ -196,12 +111,6 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       const newIndex = historyIndex + 1;
       const nextContent = history[newIndex];
       setContent(nextContent);
-
-      // Update editor content
-      if (textareaRef.current) {
-        textareaRef.current.innerHTML = markdownToHtml(nextContent);
-      }
-
       setHistoryIndex(newIndex);
 
       // Reset the flag after a short delay
@@ -212,17 +121,9 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
   }, [history, historyIndex]);
 
   // Handle content changes
-  const handleContentChange = () => {
-    if (textareaRef.current) {
-      const htmlContent = textareaRef.current.innerHTML;
-
-      // Instead of converting to markdown immediately, let's preserve the HTML structure
-      // and only convert when we actually need to save to storage
-      const markdownContent = htmlToMarkdown(htmlContent);
-
-      // Only update if the content actually changed to avoid unnecessary re-renders
-      if (markdownContent !== content) {
-        setContent(markdownContent);
+  const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newContent = e.target.value;
+    setContent(newContent);
 
         // Set status to idle when content changes
         if (saveStatus === "saved") {
@@ -234,162 +135,19 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
           clearTimeout(historyTimeoutRef.current);
         }
 
-        // Add to history with a small delay to avoid too many history entries during typing
+    // Add to history with a delay to avoid too many entries
         historyTimeoutRef.current = setTimeout(() => {
-          addToHistory(markdownContent);
-        }, 500);
+      if (!isUndoRedoRef.current) {
+        addToHistory(newContent);
       }
-    }
-  };
-
-  // Handle paste events to preserve formatting but normalize font styles
-  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
-    e.preventDefault();
-
-    // Get both HTML and plain text from clipboard
-    const htmlContent = e.clipboardData.getData("text/html");
-    const plainText = e.clipboardData.getData("text/plain");
-
-    if (htmlContent) {
-      // Clean and normalize the HTML content
-      const cleanHTML = (html: string) => {
-        // Create a temporary div to parse the HTML
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = html;
-
-        // Simple cleaning function that preserves structure
-        const processElement = (element: Element): DocumentFragment => {
-          const fragment = document.createDocumentFragment();
-
-          for (const node of Array.from(element.childNodes)) {
-            if (node.nodeType === Node.TEXT_NODE) {
-              // Preserve text nodes
-              fragment.appendChild(
-                document.createTextNode(node.textContent || "")
-              );
-            } else if (node.nodeType === Node.ELEMENT_NODE) {
-              const el = node as Element;
-              const tagName = el.tagName.toLowerCase();
-
-              switch (tagName) {
-                case "br":
-                  fragment.appendChild(document.createElement("br"));
-                  break;
-
-                case "p":
-                case "div":
-                  // Convert paragraphs and divs to content with line breaks
-                  if (el.textContent?.trim()) {
-                    // Add line break if this isn't the first element
-                    if (fragment.childNodes.length > 0) {
-                      fragment.appendChild(document.createElement("br"));
-                    }
-                    fragment.appendChild(processElement(el));
-                  }
-                  break;
-
-                case "strong":
-                case "b":
-                  // Preserve bold formatting
-                  const strongEl = document.createElement("strong");
-                  strongEl.appendChild(processElement(el));
-                  fragment.appendChild(strongEl);
-                  break;
-
-                case "em":
-                case "i":
-                  // Preserve italic formatting
-                  const emEl = document.createElement("em");
-                  emEl.appendChild(processElement(el));
-                  fragment.appendChild(emEl);
-                  break;
-
-                case "li":
-                  // Convert list items to bullet points
-                  fragment.appendChild(document.createTextNode("• "));
-                  fragment.appendChild(processElement(el));
-                  fragment.appendChild(document.createElement("br"));
-                  break;
-
-                case "ul":
-                case "ol":
-                  // Process list contents
-                  fragment.appendChild(processElement(el));
-                  break;
-
-                default:
-                  // For other elements, just extract the content
-                  fragment.appendChild(processElement(el));
-                  break;
-              }
-            }
-          }
-
-          return fragment;
-        };
-
-        return processElement(tempDiv);
-      };
-
-      const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
-
-        // Clean and insert the HTML content
-        const cleanedFragment = cleanHTML(htmlContent);
-        range.insertNode(cleanedFragment);
-
-        // Move cursor to end of inserted content
-        range.collapse(false);
-        selection.removeAllRanges();
-        selection.addRange(range);
-
-        // Trigger content change to update state
-        handleContentChange();
-        return;
-      }
-    }
-
-    // Fallback to plain text with preserved line breaks
-    if (plainText) {
-      const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
-
-        // Split text by lines and insert with proper line breaks
-        const lines = plainText.split(/\r?\n/);
-        const fragment = document.createDocumentFragment();
-
-        lines.forEach((line, index) => {
-          if (index > 0) {
-            fragment.appendChild(document.createElement("br"));
-          }
-          if (line.length > 0) {
-            // Include empty lines as breaks
-            fragment.appendChild(document.createTextNode(line));
-          }
-        });
-
-        range.insertNode(fragment);
-
-        // Move cursor to end of inserted content
-        range.collapse(false);
-        selection.removeAllRanges();
-        selection.addRange(range);
-
-        // Trigger content change to update state
-        handleContentChange();
-      }
-    }
+    }, 500);
   };
 
   // Handle key events
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Handle Ctrl+Z (Undo) and Ctrl+Y (Redo)
     if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
-      e.preventDefault();
+    e.preventDefault();
       undo();
       return;
     }
@@ -410,20 +168,363 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       return;
     }
 
-    // Handle Ctrl+B (Bold) and Ctrl+I (Italic) - Native contentEditable commands
-    if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+    // Handle Enter key for list continuation
+    if (e.key === "Enter") {
       e.preventDefault();
-      document.execCommand("bold", false);
-      handleContentChange(); // Update content after formatting
+      handleListContinuation();
       return;
     }
 
-    if ((e.ctrlKey || e.metaKey) && e.key === "i") {
+    // Handle Tab for list indentation
+    if (e.key === "Tab") {
       e.preventDefault();
-      document.execCommand("italic", false);
-      handleContentChange(); // Update content after formatting
+      if (e.shiftKey) {
+        handleListUnindent();
+      } else {
+        handleListIndent();
+      }
       return;
     }
+
+    // Handle smart backspace for indentation
+    if (e.key === "Backspace") {
+      const shouldHandleSmartBackspace = handleSmartBackspace();
+      if (shouldHandleSmartBackspace) {
+        e.preventDefault();
+        return;
+      }
+    }
+  };
+
+  // Function to detect if current line is a list item
+  const getListInfo = (text: string, cursorPos: number) => {
+    const lines = text.substring(0, cursorPos).split('\n');
+    const currentLine = lines[lines.length - 1];
+    
+    // Check for unordered list patterns (-, *, •)
+    const unorderedMatch = currentLine.match(/^(\s*)([-*•])\s+(.*)$/);
+    if (unorderedMatch) {
+      return {
+        type: 'unordered',
+        indent: unorderedMatch[1],
+        marker: unorderedMatch[2],
+        content: unorderedMatch[3],
+        fullMatch: unorderedMatch[0]
+      };
+    }
+    
+    // Check for ordered list patterns (1., 2., etc.)
+    const orderedMatch = currentLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
+    if (orderedMatch) {
+      return {
+        type: 'ordered',
+        indent: orderedMatch[1],
+        number: parseInt(orderedMatch[2]),
+        content: orderedMatch[3],
+        fullMatch: orderedMatch[0]
+      };
+    }
+    
+    return null;
+  };
+
+  // Function to handle Enter key in lists
+  const handleListContinuation = () => {
+    if (!textareaRef.current) return;
+    
+    const textarea = textareaRef.current;
+    const cursorPos = textarea.selectionStart;
+    const text = textarea.value;
+    
+    const listInfo = getListInfo(text, cursorPos);
+    
+    if (listInfo) {
+      // If the current list item is empty, end the list
+      if (listInfo.content.trim() === '') {
+        // Remove the empty list item and add a normal line break
+        const lines = text.split('\n');
+        const currentLineIndex = text.substring(0, cursorPos).split('\n').length - 1;
+        lines[currentLineIndex] = listInfo.indent; // Keep just the indentation
+        
+        const newText = lines.join('\n');
+        const newCursorPos = cursorPos - listInfo.fullMatch.length + listInfo.indent.length;
+        
+        setContent(newText);
+        setTimeout(() => {
+          textarea.setSelectionRange(newCursorPos, newCursorPos);
+        }, 0);
+        return;
+      }
+      
+      // Continue the list with the next item
+      let newListItem = '';
+      if (listInfo.type === 'unordered') {
+        newListItem = `\n${listInfo.indent}${listInfo.marker} `;
+      } else if (listInfo.type === 'ordered' && typeof listInfo.number === 'number') {
+        // Find the next number for this indentation level
+        const nextNumber = getNextOrderedNumber(text, cursorPos, listInfo.indent);
+        newListItem = `\n${listInfo.indent}${nextNumber}. `;
+      }
+      
+      const newText = text.substring(0, cursorPos) + newListItem + text.substring(cursorPos);
+      const newCursorPos = cursorPos + newListItem.length;
+      
+      setContent(newText);
+      setTimeout(() => {
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    } else {
+      // Normal Enter behavior
+      const newText = text.substring(0, cursorPos) + '\n' + text.substring(cursorPos);
+      const newCursorPos = cursorPos + 1;
+      
+      setContent(newText);
+      setTimeout(() => {
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    }
+  };
+
+  // Helper function to get the next number for an ordered list at a specific indentation level
+  const getNextOrderedNumber = (text: string, cursorPos: number, indentLevel: string) => {
+    const lines = text.substring(0, cursorPos).split('\n');
+    let highestNumber = 0;
+    
+    // Look backwards through previous lines to find the most recent number at this exact indentation level
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const line = lines[i];
+      const orderedMatch = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
+      
+      if (orderedMatch) {
+        const lineIndent = orderedMatch[1];
+        const number = parseInt(orderedMatch[2]);
+        
+        if (lineIndent === indentLevel) {
+          // Found a line at our exact indentation level
+          highestNumber = number;
+          break;
+        } else if (lineIndent.length < indentLevel.length) {
+          // We've hit a less indented line (parent level), stop looking
+          break;
+        }
+        // Continue looking if this line is more indented (child level)
+      }
+    }
+    
+    return highestNumber + 1;
+  };
+
+  // Function to handle Tab indentation
+  const handleListIndent = () => {
+    if (!textareaRef.current) return;
+    
+    const textarea = textareaRef.current;
+    const cursorPos = textarea.selectionStart;
+    const text = textarea.value;
+    
+    const listInfo = getListInfo(text, cursorPos);
+    
+    if (listInfo) {
+      // Add indentation to the current list item
+      const lines = text.split('\n');
+      const currentLineIndex = text.substring(0, cursorPos).split('\n').length - 1;
+      const currentLine = lines[currentLineIndex];
+      
+      // Add four spaces for indentation
+      let newLine = '    ' + currentLine;
+      
+      // If this is an ordered list, reset numbering to 1 when indenting
+      if (listInfo.type === 'ordered') {
+        const indentedOrderedMatch = newLine.match(/^(\s*)\d+\.\s+(.*)$/);
+        if (indentedOrderedMatch) {
+          newLine = `${indentedOrderedMatch[1]}1. ${indentedOrderedMatch[2]}`;
+        }
+        
+        // Renumber subsequent items at the original indentation level
+        const originalIndent = listInfo.indent;
+        const currentNumber = listInfo.number;
+        
+        if (typeof currentNumber === 'number') {
+          for (let i = currentLineIndex + 1; i < lines.length; i++) {
+            const subsequentLine = lines[i];
+            const subsequentMatch = subsequentLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
+            
+            if (subsequentMatch) {
+              const subsequentIndent = subsequentMatch[1];
+              const subsequentNumber = parseInt(subsequentMatch[2]);
+              const subsequentContent = subsequentMatch[3];
+              
+              if (subsequentIndent === originalIndent) {
+                // This is at the same level as the original item, renumber it
+                lines[i] = `${subsequentIndent}${subsequentNumber - 1}. ${subsequentContent}`;
+              } else if (subsequentIndent.length < originalIndent.length) {
+                // This is at a parent level, also needs renumbering if it comes after
+                const adjustedNumber = subsequentNumber - 1;
+                if (adjustedNumber > 0) {
+                  lines[i] = `${subsequentIndent}${adjustedNumber}. ${subsequentContent}`;
+                }
+              }
+              // Continue processing all subsequent numbered items
+            } else if (subsequentLine.trim() === '') {
+              // Empty line, continue
+              continue;
+            } else if (!subsequentLine.match(/^\s*[-*•]\s/)) {
+              // Non-list line (not bullet point), stop renumbering
+              break;
+            }
+          }
+        }
+      }
+      
+      lines[currentLineIndex] = newLine;
+      
+      const newText = lines.join('\n');
+      const newCursorPos = cursorPos + 4;
+      
+      setContent(newText);
+      setTimeout(() => {
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    } else {
+      // Regular tab behavior - add four spaces
+      const newText = text.substring(0, cursorPos) + '    ' + text.substring(cursorPos);
+      const newCursorPos = cursorPos + 4;
+      
+      setContent(newText);
+      setTimeout(() => {
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    }
+  };
+
+  // Function to handle Shift+Tab unindentation
+  const handleListUnindent = () => {
+    if (!textareaRef.current) return;
+    
+    const textarea = textareaRef.current;
+    const cursorPos = textarea.selectionStart;
+    const text = textarea.value;
+    
+    const lines = text.split('\n');
+    const currentLineIndex = text.substring(0, cursorPos).split('\n').length - 1;
+    const currentLine = lines[currentLineIndex];
+    
+    // Check if this is an ordered list before unindenting
+    const orderedMatch = currentLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
+    
+    // Remove up to 4 spaces from the beginning of the line
+    let newLine = currentLine;
+    let removedSpaces = 0;
+    
+    if (currentLine.startsWith('    ')) {
+      newLine = currentLine.substring(4);
+      removedSpaces = 4;
+    } else if (currentLine.startsWith('   ')) {
+      newLine = currentLine.substring(3);
+      removedSpaces = 3;
+    } else if (currentLine.startsWith('  ')) {
+      newLine = currentLine.substring(2);
+      removedSpaces = 2;
+    } else if (currentLine.startsWith(' ')) {
+      newLine = currentLine.substring(1);
+      removedSpaces = 1;
+    }
+    
+    // If this was an ordered list item, renumber it for the new indentation level
+    if (removedSpaces > 0 && orderedMatch) {
+      const originalIndentLevel = orderedMatch[1];
+      const newIndentLevel = orderedMatch[1].substring(removedSpaces);
+      const content = orderedMatch[3];
+      const originalNumber = parseInt(orderedMatch[2]);
+      
+      // Find the correct number for this new indentation level
+      const newNumber = getNextOrderedNumber(text, cursorPos, newIndentLevel);
+      newLine = `${newIndentLevel}${newNumber}. ${content}`;
+      
+      // Renumber subsequent items at the original (deeper) indentation level
+      for (let i = currentLineIndex + 1; i < lines.length; i++) {
+        const subsequentLine = lines[i];
+        const subsequentMatch = subsequentLine.match(/^(\s*)(\d+)\.\s+(.*)$/);
+        
+        if (subsequentMatch) {
+          const subsequentIndent = subsequentMatch[1];
+          const subsequentNumber = parseInt(subsequentMatch[2]);
+          const subsequentContent = subsequentMatch[3];
+          
+          if (subsequentIndent === originalIndentLevel) {
+            // This is at the same original level, renumber it down
+            lines[i] = `${subsequentIndent}${subsequentNumber - 1}. ${subsequentContent}`;
+          }
+          // Continue processing all subsequent numbered items
+        } else if (subsequentLine.trim() === '') {
+          // Empty line, continue
+          continue;
+        } else if (!subsequentLine.match(/^\s*[-*•]\s/)) {
+          // Non-list line (not bullet point), stop renumbering
+          break;
+        }
+      }
+    }
+    
+    if (removedSpaces > 0) {
+      lines[currentLineIndex] = newLine;
+      const newText = lines.join('\n');
+      const newCursorPos = cursorPos - removedSpaces;
+      
+      setContent(newText);
+      setTimeout(() => {
+        textarea.setSelectionRange(newCursorPos, newCursorPos);
+      }, 0);
+    }
+  };
+
+  // Function to handle smart backspace for indentation
+  const handleSmartBackspace = () => {
+    if (!textareaRef.current) return false;
+    
+    const textarea = textareaRef.current;
+    const cursorPos = textarea.selectionStart;
+    const text = textarea.value;
+    
+    // Only handle smart backspace if cursor is at the start or in the indentation area
+    const lines = text.split('\n');
+    const currentLineIndex = text.substring(0, cursorPos).split('\n').length - 1;
+    const currentLine = lines[currentLineIndex];
+    const lineStartPos = cursorPos - (text.substring(0, cursorPos).split('\n')[currentLineIndex]?.length || 0);
+    const positionInLine = cursorPos - lineStartPos;
+    
+    // Check if we're in the indentation area (only spaces before cursor in current line)
+    const beforeCursor = currentLine.substring(0, positionInLine);
+    const isInIndentation = /^\s*$/.test(beforeCursor) && beforeCursor.length > 0;
+    
+    if (isInIndentation) {
+      // Calculate how many spaces to remove (up to 4, or to the previous indent level)
+      let spacesToRemove = 0;
+      
+      if (beforeCursor.length >= 4 && beforeCursor.endsWith('    ')) {
+        spacesToRemove = 4;
+      } else if (beforeCursor.length >= 3 && beforeCursor.endsWith('   ')) {
+        spacesToRemove = 3;
+      } else if (beforeCursor.length >= 2 && beforeCursor.endsWith('  ')) {
+        spacesToRemove = 2;
+      } else if (beforeCursor.length >= 1 && beforeCursor.endsWith(' ')) {
+        spacesToRemove = 1;
+      }
+      
+      if (spacesToRemove > 0) {
+        const newText = text.substring(0, cursorPos - spacesToRemove) + text.substring(cursorPos);
+        const newCursorPos = cursorPos - spacesToRemove;
+        
+        setContent(newText);
+        setTimeout(() => {
+          textarea.setSelectionRange(newCursorPos, newCursorPos);
+        }, 0);
+        
+        return true; // Indicate that we handled the backspace
+      }
+    }
+    
+    return false; // Let normal backspace behavior handle it
   };
 
   // Use useCallback to memoize the autoSave function to prevent stale closures
@@ -434,7 +535,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       content,
     };
 
-    // Only save if content has actually changed (normalize whitespace for comparison)
+    // Only save if content has actually changed
     if (hasUnsavedChanges()) {
       setSaveStatus("saving");
       onSave(updatedNote);
@@ -454,19 +555,11 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       clearTimeout(timeoutRef.current);
     }
 
-    // Skip autosave on initial mount, if no changes, or during auto-conversion
-    if (isInitialMountRef.current || isAutoConvertingRef.current) {
-      if (isInitialMountRef.current) {
-        isInitialMountRef.current = false;
-      }
-      return;
-    }
-
     // Only set timeout if there are actual changes to save
     if (hasUnsavedChanges()) {
       // Set new timeout for autosave
       timeoutRef.current = setTimeout(() => {
-        autoSave();
+          autoSave();
       }, 2000); // 2 seconds delay
     }
 
@@ -540,7 +633,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
   // Close help popup when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (helpRef.current && !helpRef.current.contains(event.target as Node)) {
+      if (helpRef.current && event.target && !helpRef.current.contains(event.target as Node)) {
         setShowHelp(false);
       }
     };
@@ -556,7 +649,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
 
   // Update save status when title changes
   useEffect(() => {
-    if (!isInitialMountRef.current && title !== lastSavedRef.current.title) {
+    if (title !== lastSavedRef.current.title) {
       if (saveStatus === "saved") {
         setSaveStatus("idle");
       }
@@ -584,28 +677,6 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
               return;
             }
           }}
-          onPaste={(e) => {
-            e.preventDefault();
-            const plainText = e.clipboardData.getData("text/plain");
-            if (plainText) {
-              // Replace any line breaks with spaces for title
-              const cleanText = plainText.replace(/\n/g, " ").trim();
-              const target = e.target as HTMLTextAreaElement;
-              const start = target.selectionStart;
-              const end = target.selectionEnd;
-              const newValue =
-                title.substring(0, start) + cleanText + title.substring(end);
-              setTitle(newValue);
-
-              // Set cursor position after pasted text
-              setTimeout(() => {
-                target.setSelectionRange(
-                  start + cleanText.length,
-                  start + cleanText.length
-                );
-              }, 0);
-            }
-          }}
           placeholder="Note title"
           className="text-3xl font-bold border-none px-0 py-0 focus-visible:ring-0 focus:ring-0 focus:outline-none bg-transparent shadow-none rounded-none outline-none h-auto w-full placeholder:text-muted-foreground/40 break-words resize-none overflow-hidden"
           rows={1}
@@ -624,22 +695,20 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       {/* Content Section */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 flex overflow-hidden">
-          {/* WYSIWYG Editor */}
+          {/* Simple Textarea Editor */}
           <div className="flex flex-col flex-1 overflow-hidden">
-            <div
+            <textarea
               ref={textareaRef}
-              contentEditable
-              onInput={handleContentChange}
+              value={content}
+              onChange={handleContentChange}
               onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-              className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 break-words whitespace-pre-wrap w-full overflow-y-auto"
+              placeholder="Write your note here..."
+              className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 w-full overflow-y-auto"
               style={{
                 fontFamily: "inherit",
                 fontSize: "16px",
                 lineHeight: "1.5em",
               }}
-              suppressContentEditableWarning={true}
-              data-placeholder="Write your note here..."
             />
           </div>
         </div>
@@ -672,19 +741,6 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
                 </Button>
               </div>
               <div className="space-y-2 text-sm">
-                <div className="flex justify-between items-center">
-                  <span>Bold</span>
-                  <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                    {cmdKey}+B
-                  </kbd>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span>Italic</span>
-                  <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                    {cmdKey}+I
-                  </kbd>
-                </div>
-                <div className="border-t border-border pt-2 mt-2">
                   <div className="space-y-2">
                     <div className="flex justify-between items-center">
                       <span>Undo</span>
@@ -699,35 +755,21 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
                       </kbd>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span>Copy</span>
-                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                        {cmdKey}+C
-                      </kbd>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>Cut</span>
-                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                        {cmdKey}+X
-                      </kbd>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>Paste</span>
-                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                        {cmdKey}+V
-                      </kbd>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>Select all</span>
-                      <kbd className="px-2 py-1 text-xs bg-muted rounded">
-                        {cmdKey}+A
-                      </kbd>
-                    </div>
-                    <div className="flex justify-between items-center">
                       <span>Save</span>
                       <kbd className="px-2 py-1 text-xs bg-muted rounded">
                         {cmdKey}+S
                       </kbd>
                     </div>
+                </div>
+                <div className="border-t border-border pt-2 mt-2">
+                  <div className="text-xs font-medium text-muted-foreground mb-2">Lists</div>
+                  <div className="space-y-1 text-xs">
+                    <div>• Start with "1. " for numbered lists</div>
+                    <div>• Start with "- ", "* ", or "• " for bullet lists</div>
+                    <div>• Press Enter to continue list</div>
+                    <div>• Press Tab to indent (4 spaces), Shift+Tab to unindent</div>
+                    <div>• Press Backspace to remove entire indent levels</div>
+                    <div>• Press Enter on empty item to end list</div>
                   </div>
                 </div>
               </div>
@@ -763,59 +805,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
           )}
         </div>
       </div>
-
-      <style jsx>{`
-        textarea {
-          font-family: inherit;
-          position: relative;
-        }
-        textarea::placeholder {
-          color: hsl(var(--muted-foreground) / 0.4);
-        }
-
-        /* ContentEditable placeholder styling */
-        [contenteditable]:empty:before {
-          content: attr(data-placeholder);
-          color: hsl(var(--muted-foreground) / 0.4);
-          pointer-events: none;
-        }
-
-        /* WYSIWYG editor styling */
-        [contenteditable] {
-          font-family: inherit;
-          position: relative;
-        }
-
-        [contenteditable] strong {
-          font-weight: bold;
-        }
-
-        [contenteditable] em {
-          font-style: italic;
-        }
-
-        [contenteditable] li {
-          margin-left: 1.5em;
-          list-style-type: disc;
-        }
-
-        [contenteditable]:focus {
-          outline: none;
-        }
-
-        .gray-lists textarea {
-          background: linear-gradient(transparent, transparent),
-            repeating-linear-gradient(
-              0deg,
-              transparent 0,
-              transparent 1.5em,
-              transparent 1.5em,
-              transparent 3em
-            );
-          background-size: 100% 1.5em;
-          background-attachment: local;
-        }
-      `}</style>
     </div>
   );
 }
+

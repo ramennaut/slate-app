@@ -1,24 +1,68 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Slate Note-Taking App
+
+A modern, clean note-taking application built with Next.js and TypeScript.
+
+## Features
+
+- **Plain Text Editing**: Simple, distraction-free text editor
+- **Smart Lists**: Intelligent ordered and unordered list detection with auto-continuation
+- **Auto-save**: Automatically saves your notes as you type
+- **Modern UI**: Clean and responsive design
+- **Undo/Redo**: Full history support with keyboard shortcuts
+
+## Usage
+
+### Keyboard Shortcuts
+
+- **Save**: `Ctrl+S` (Windows/Linux) or `Cmd+S` (Mac)
+- **Undo**: `Ctrl+Z` (Windows/Linux) or `Cmd+Z` (Mac)
+- **Redo**: `Ctrl+Y` (Windows/Linux) or `Cmd+Y` (Mac)
+
+### Smart Lists
+
+#### Creating Lists
+- **Ordered Lists**: Start a line with `1. ` to begin a numbered list
+- **Unordered Lists**: Start a line with `- `, `* `, or `• ` to begin a bullet list
+
+#### List Navigation
+- **Continue List**: Press `Enter` to automatically create the next list item
+- **Indent**: Press `Tab` to indent the current list item (4 spaces)
+- **Nested Numbering**: Ordered lists reset to 1 when indented to a new level
+- **Unindent**: Press `Shift+Tab` to reduce indentation
+- **Smart Backspace**: Press `Backspace` in indented areas to remove entire indent levels
+- **End List**: Press `Enter` on an empty list item to end the list
+
+#### Examples
+```
+1. First item
+2. Second item
+    1. Nested item (resets to 1)
+    2. Another nested item
+3. Third item
+
+- Bullet point
+- Another bullet
+    1. Nested numbered item (starts at 1)
+    2. Another nested number
+- Back to bullets
+```
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run build
+```
+
+This project uses TypeScript for type safety and Next.js for the React framework.
 
 ## Learn More
 
