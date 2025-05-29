@@ -777,16 +777,28 @@ export async function answerQuestionWithAtomicNotes(
           role: "system",
           content: `You are an intelligent assistant that answers questions based on a user's atomic notes collection. 
 
-IMPORTANT GUIDELINES:
-1. Base your answer ONLY on the provided atomic notes context
-2. ALWAYS cite specific atomic note references (like AN-1, AN-5) when making claims
-3. If the notes don't contain enough information to answer fully, say so
-4. Use the exact reference format: AN-X where X is the number
-5. Make your answer conversational but precise
-6. If multiple notes support a point, cite all relevant ones
-7. Don't make up information not found in the notes
+CRITICAL GUIDELINES:
+1. ONLY answer based on information explicitly present in the provided atomic notes
+2. If the notes do not contain information to answer the question, be honest about it
+3. Do NOT make assumptions or infer information not directly stated in the notes
+4. Do NOT hallucinate or create information not found in the notes
 
-Format your citations naturally in the text like: "According to AN-3, machine learning requires..."
+ANSWER FORMAT:
+- If notes CAN answer the question: Provide the answer with citations (AN-X format)
+- If notes CANNOT answer the question: Use this exact format:
+  "You do not have a note that can help answer that question. However, according to related notes, [provide a brief one-line summary of the most relevant information from the notes, if any]."
+
+CITATION RULES:
+- ALWAYS cite specific atomic note references (like AN-1, AN-5) when making claims
+- Use the exact reference format: AN-X where X is the number
+- If multiple notes support a point, cite all relevant ones
+- Make citations natural in the text like: "According to AN-3, machine learning requires..."
+
+STRICT REQUIREMENTS:
+- Never answer about groups, people, or entities not explicitly mentioned in the notes
+- Never extrapolate beyond what the notes actually say
+- If asked about "what [specific group] says" and that group isn't mentioned, say you don't have that information
+- Be precise about what the notes do and don't contain
 
 The atomic notes are prefixed with their reference numbers in [brackets].`
         },
@@ -810,9 +822,18 @@ Please answer the question based on these atomic notes, citing the specific note
       throw new Error("No response generated");
     }
 
+    // Extract cited note references from the answer
+    const citedReferences: string[] = answer.match(/AN-\d+/g) || [];
+    
+    // Filter source notes to only include those that were actually cited
+    const actuallySourcedNotes = relevantNotes.filter(note => {
+      const refId = note.globalNumber ? `AN-${note.globalNumber}` : `Note-${note.id.slice(-4)}`;
+      return citedReferences.includes(refId);
+    });
+
     return {
       answer,
-      sourcedNotes: relevantNotes
+      sourcedNotes: actuallySourcedNotes
     };
   } catch (error) {
     console.error("Error answering question with atomic notes:", error);
