@@ -817,7 +817,7 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
     <div className="h-full flex flex-col max-w-4xl mx-auto">
       {/* Title Section - Only show for regular notes */}
       {!note.isAtomic && (
-        <div className="pb-6 mb-8">
+        <div className="pt-6 pb-3 mb-4">
           <textarea
             value={title}
             onChange={(e) => setTitle(e.target.value)}
