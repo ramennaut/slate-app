@@ -15,6 +15,7 @@ interface AtomicCardsViewProps {
   onCreateTopic?: (selectedAtomicNotes: Note[]) => Promise<void>;
   onCreateStructuredNote?: (selectedAtomicNotes: Note[]) => void;
   onDeleteNote?: (noteId: string) => void;
+  isMobile: boolean;
 }
 
 interface CardState {
@@ -33,6 +34,7 @@ export default function AtomicCardsView({
   onCreateTopic,
   onCreateStructuredNote,
   onDeleteNote,
+  isMobile,
 }: AtomicCardsViewProps) {
   const [cardStates, setCardStates] = useState<CardState>({});
   const [isCreatingTopic, setIsCreatingTopic] = useState(false);
