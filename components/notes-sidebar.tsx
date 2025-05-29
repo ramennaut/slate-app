@@ -45,9 +45,10 @@ export default function NotesSidebar({
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   
   // Separate notes into categories
-  const sourceNotes = notes.filter(note => !note.isAtomic && !note.isSummary);
+  const sourceNotes = notes.filter(note => !note.isAtomic && !note.isSummary && note.noteType !== 'structured');
   const atomicNotes = notes.filter(note => note.isAtomic);
-  const hubNotes = notes.filter(note => note.isSummary);
+  const hubNotes = notes.filter(note => note.isSummary && (note.noteType === 'hub' || !note.noteType)); // Default to hub if no type specified
+  const structuredNotes = notes.filter(note => note.noteType === 'structured');
 
   // Find the currently selected note (could be source, atomic, or hub)
   const selectedNote = notes.find(note => note.id === activeNoteId);
@@ -65,6 +66,7 @@ export default function NotesSidebar({
   const renderNoteItem = (note: Note, isSubNote = false) => {
     const isActive = activeNoteId === note.id;
     const isAtomic = note.isAtomic;
+    const isHubNote = note.isSummary;
 
     return (
       <div
@@ -79,7 +81,7 @@ export default function NotesSidebar({
         } ${
           isSubNote ? "ml-3 border-l-2 border-sidebar-primary/20" : ""
         } ${
-          isAtomic ? "p-1.5" : "p-2"
+          (isAtomic || isHubNote) ? "p-1.5" : "p-2"
         }`}
       >
         {isActive && !isCollapsed && (
@@ -92,15 +94,15 @@ export default function NotesSidebar({
           } ${isCollapsed ? "hidden" : ""}`}
         >
           <div className="w-full min-w-0">
-            {isAtomic ? (
-              // Atomic note: compact one-line preview like VS Code/Obsidian
+            {(isAtomic || isHubNote) ? (
+              // Atomic note and Hub note: compact one-line preview like VS Code/Obsidian
               <div className="flex items-center justify-between gap-2">
                 <p className={`text-xs line-clamp-1 flex-1 ${
                   isActive
                     ? "text-sidebar-primary/90"
                     : "text-sidebar-foreground/75 group-hover:text-sidebar-foreground"
                 }`}>
-                  {note.content}
+                  {isHubNote ? note.title : note.content}
                 </p>
                 <span className="text-xs text-sidebar-foreground/30 font-mono flex-shrink-0">
                   {new Date(note.createdAt).toLocaleDateString('en-US', { 
@@ -188,7 +190,9 @@ export default function NotesSidebar({
                   ? `Delete atomic note: "${selectedNote.content.slice(0, 30)}${selectedNote.content.length > 30 ? '...' : ''}"`
                   : selectedNote.isSummary
                     ? `Delete hub note: "${selectedNote.title}"`
-                    : `Delete "${selectedNote.title || "Untitled Note"}"`
+                    : selectedNote.noteType === 'structured'
+                      ? `Delete structure note: "${selectedNote.title}"`
+                      : `Delete "${selectedNote.title || "Untitled Note"}"`
                 : "No note selected"
             }
           >
@@ -238,7 +242,7 @@ export default function NotesSidebar({
           >
             Topics
             <span className="ml-1.5 text-xs bg-sidebar-accent/60 px-1.5 py-0.5 rounded-full">
-              {hubNotes.length}
+              {hubNotes.length + structuredNotes.length}
             </span>
           </button>
         </div>
@@ -314,13 +318,12 @@ export default function NotesSidebar({
                             <div
                               key={note.id}
                               onClick={() => onSelectNote(note)}
-                              className={`group relative flex items-center gap-1 rounded cursor-pointer transition-all duration-200 overflow-hidden border px-1 py-1 ${
+                              className={`group relative flex items-center gap-2 rounded cursor-pointer transition-all duration-200 overflow-hidden border px-1 py-1 ${
                                 activeNoteId === note.id
                                   ? "bg-gradient-to-br from-sidebar-primary/10 to-sidebar-primary/5 border-sidebar-primary/20 shadow-sm ring-1 ring-sidebar-primary/10"
                                   : "bg-transparent border-transparent hover:border-sidebar-primary/15 hover:bg-sidebar-accent/40"
                               }`}
                             >
-                              <File className="h-3 w-3 text-sidebar-foreground/50 flex-shrink-0" />
                               <div className="flex items-center justify-between gap-2 min-w-0 flex-1">
                                 <p className={`text-xs line-clamp-1 flex-1 ${
                                   activeNoteId === note.id
@@ -356,16 +359,68 @@ export default function NotesSidebar({
                 </>
               ) : (
                 <>
-                  {/* Hub Notes Tab Content */}
-                  {hubNotes.length > 0 ? (
-                    <div className="space-y-1">
-                      {hubNotes.map(note => renderNoteItem(note))}
+                  {/* Topics Tab Content */}
+                  
+                  {/* Hub Notes Section */}
+                  {hubNotes.length > 0 && (
+                    <div>
+                      <div 
+                        className="flex items-center gap-2 px-1 mb-2 cursor-pointer hover:bg-sidebar-accent/30 rounded py-1 transition-colors"
+                        onClick={() => toggleSection('hub')}
+                      >
+                        {collapsedSections.has('hub') ? (
+                          <ChevronRight className="h-3 w-3 text-sidebar-foreground/50" />
+                        ) : (
+                          <ChevronDown className="h-3 w-3 text-sidebar-foreground/50" />
+                        )}
+                        <h3 className="text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
+                          Hub Notes
+                        </h3>
+                        <span className="text-xs text-sidebar-foreground/40 bg-sidebar-accent/60 px-1.5 py-0.5 rounded-full font-medium">
+                          {hubNotes.length}
+                        </span>
+                      </div>
+                      {!collapsedSections.has('hub') && (
+                        <div className="space-y-1">
+                          {hubNotes.map(note => renderNoteItem(note))}
+                        </div>
+                      )}
                     </div>
-                  ) : (
+                  )}
+
+                  {/* Structured Notes Section */}
+                  {structuredNotes.length > 0 && (
+                    <div>
+                      <div 
+                        className="flex items-center gap-2 px-1 mb-2 cursor-pointer hover:bg-sidebar-accent/30 rounded py-1 transition-colors"
+                        onClick={() => toggleSection('structured')}
+                      >
+                        {collapsedSections.has('structured') ? (
+                          <ChevronRight className="h-3 w-3 text-sidebar-foreground/50" />
+                        ) : (
+                          <ChevronDown className="h-3 w-3 text-sidebar-foreground/50" />
+                        )}
+                        <h3 className="text-xs font-semibold text-sidebar-foreground/60 uppercase tracking-wider">
+                          Structure Notes
+                        </h3>
+                        <span className="text-xs text-sidebar-foreground/40 bg-sidebar-accent/60 px-1.5 py-0.5 rounded-full font-medium">
+                          {structuredNotes.length}
+                        </span>
+                      </div>
+                      {!collapsedSections.has('structured') && (
+                        <div className="space-y-1">
+                          {structuredNotes.map(note => renderNoteItem(note))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Empty state for Topics tab */}
+                  {hubNotes.length === 0 && structuredNotes.length === 0 && (
                     <div className="p-3 text-center">
                       <EmptyState
                         message="No topics yet... 🌐"
-                        description="Create atomic notes to automatically generate topic connections."
+                        description="Create atomic notes to automatically generate topic connections, or create structure notes for organized content."
                         icon={FileText}
                       />
                     </div>

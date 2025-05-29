@@ -401,11 +401,121 @@ Please identify trains of thought and suggest hub note updates/creations.`
   }
 }
 
-export function generateHubNoteContent(
-  theme: string,
-  description: string,
-  linkedAtomicNotes: Array<{ id: string; content: string }>
-): string {
-  // Just return the AI-generated description as a simple 1-liner
-  return description;
+export async function generateHubNoteContent(atomicNotes: Array<{ content: string }>): Promise<{ title: string; description: string }> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert at creating concise hub notes that connect related ideas. Given a collection of atomic notes, generate a title and one-line description that captures the central theme or concept connecting these ideas.
+
+The output should be:
+- Title: Concise (2-6 words), descriptive of the main theme
+- Description: One sentence (15-25 words) explaining what this topic is about
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "title": "Brief Theme Title",
+  "description": "One sentence describing what this topic explores or connects."
+}
+
+Focus on the conceptual connections and overarching themes, not just listing what the notes contain.`
+        },
+        {
+          role: "user",
+          content: `Generate a title and description for a hub note that connects these atomic notes:
+
+${atomicNotes.map((note, index) => `${index + 1}. ${note.content}`).join('\n\n')}
+
+Please identify the central theme and create a hub note title and description.`
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 150
+    });
+
+    const result = response.choices[0]?.message?.content?.trim();
+    
+    if (!result) {
+      throw new Error('No response generated');
+    }
+
+    // Clean the response - remove markdown code blocks if present
+    let cleanedResult = result;
+    if (cleanedResult.startsWith('```json')) {
+      cleanedResult = cleanedResult.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+    } else if (cleanedResult.startsWith('```')) {
+      cleanedResult = cleanedResult.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    }
+
+    // Parse the JSON response
+    let hubContent: { title: string; description: string };
+    try {
+      hubContent = JSON.parse(cleanedResult);
+    } catch (parseError) {
+      console.error('Failed to parse OpenAI hub note response:', cleanedResult);
+      throw new Error(`Invalid JSON response: ${parseError}`);
+    }
+
+    // Validate the response structure
+    if (!hubContent.title || !hubContent.description) {
+      throw new Error('Invalid response format from OpenAI');
+    }
+
+    return hubContent;
+  } catch (error) {
+    console.error('Error generating hub note content:', error);
+    // Fallback to generic content
+    return {
+      title: `Topic - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+      description: `This hub note connects ${atomicNotes.length} related atomic notes. Review the linked notes to identify common themes and patterns.`
+    };
+  }
+}
+
+export async function generateStructureNoteTitle(atomicNotes: Array<{ content: string }>): Promise<string> {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert at creating concise, descriptive titles for academic and professional writing. 
+
+Given a collection of atomic notes (small, focused ideas), generate a clear, engaging title that captures the main theme or concept that connects these ideas.
+
+The title should be:
+- Concise (3-8 words)
+- Descriptive of the main theme
+- Professional/academic in tone
+- Suitable for a blog post, article, or book chapter
+
+Return only the title, nothing else.`
+        },
+        {
+          role: "user",
+          content: `Generate a title for a structure note that synthesizes these atomic notes:
+
+${atomicNotes.map((note, index) => `${index + 1}. ${note.content}`).join('\n\n')}
+
+Title:`
+        }
+      ],
+      temperature: 0.7,
+      max_tokens: 50
+    });
+
+    const title = response.choices[0]?.message?.content?.trim();
+    
+    if (!title) {
+      throw new Error('No title generated');
+    }
+
+    return title;
+  } catch (error) {
+    console.error('Error generating structure note title:', error);
+    // Fallback to a generic title
+    return `Structure Note - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  }
 } 

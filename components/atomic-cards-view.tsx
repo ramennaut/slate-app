@@ -13,6 +13,7 @@ interface AtomicCardsViewProps {
   onSelectNote: (note: Note) => void;
   onCloseCard: (noteId: string) => void;
   onCreateTopic?: (selectedAtomicNotes: Note[]) => Promise<void>;
+  onCreateStructuredNote?: (selectedAtomicNotes: Note[]) => void;
   onDeleteNote?: (noteId: string) => void;
   isMobile?: boolean;
 }
@@ -31,14 +32,16 @@ export default function AtomicCardsView({
   onSelectNote,
   onCloseCard,
   onCreateTopic,
+  onCreateStructuredNote,
   onDeleteNote,
   isMobile
 }: AtomicCardsViewProps) {
   const [cardStates, setCardStates] = useState<CardState>({});
   const [isCreatingTopic, setIsCreatingTopic] = useState(false);
+  const [isCreatingStructured, setIsCreatingStructured] = useState(false);
 
   const handleCreateTopic = async () => {
-    if (!onCreateTopic || notes.length < 2) return;
+    if (!onCreateTopic || notes.length < 1) return;
     
     setIsCreatingTopic(true);
     
@@ -48,6 +51,20 @@ export default function AtomicCardsView({
       console.error('Failed to create topic:', error);
     } finally {
       setIsCreatingTopic(false);
+    }
+  };
+
+  const handleCreateStructuredNote = () => {
+    if (!onCreateStructuredNote || notes.length === 0) return;
+    
+    setIsCreatingStructured(true);
+    
+    try {
+      onCreateStructuredNote(notes); // Use all notes in the flash card view
+    } catch (error) {
+      console.error('Failed to create structured note:', error);
+    } finally {
+      setIsCreatingStructured(false);
     }
   };
 
@@ -207,7 +224,7 @@ export default function AtomicCardsView({
           </div>
         </div>
         <p className="text-sm text-muted-foreground/80 ml-6">
-          {onCreateTopic ? "Create a topic from all notes in this view" : "Click and edit multiple notes simultaneously"}
+          {(onCreateTopic || onCreateStructuredNote) ? "Create hub notes or structure notes from all notes in this view" : "Click and edit multiple notes simultaneously"}
         </p>
       </div>
       
@@ -217,28 +234,53 @@ export default function AtomicCardsView({
         </div>
       </ScrollArea>
 
-      {/* Floating Create Topic Button */}
-      {onCreateTopic && (
-        <div className="fixed bottom-6 right-6 z-50">
-          <Button
-            onClick={handleCreateTopic}
-            size="sm"
-            className="font-medium shadow-lg hover:shadow-xl transition-shadow"
-            disabled={notes.length < 2 || isCreatingTopic}
-            title={notes.length < 2 ? "Need at least 2 notes to create a topic" : "Create a topic from all notes in this view"}
-          >
-            {isCreatingTopic ? (
-              <>
-                <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                Creating...
-              </>
-            ) : (
-              <>
-                <Plus className="h-4 w-4 mr-2" />
-                Create Topic ({notes.length})
-              </>
-            )}
-          </Button>
+      {/* Floating Create Buttons */}
+      {(onCreateTopic || onCreateStructuredNote) && (
+        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+          {onCreateTopic && (
+            <Button
+              onClick={handleCreateTopic}
+              size="sm"
+              className="font-medium shadow-lg hover:shadow-xl transition-shadow"
+              disabled={notes.length < 1 || isCreatingTopic || isCreatingStructured}
+              title={notes.length < 1 ? "Need at least 1 note to create a topic" : "Create a hub note from all notes in this view"}
+            >
+              {isCreatingTopic ? (
+                <>
+                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Topic ({notes.length})
+                </>
+              )}
+            </Button>
+          )}
+          
+          {onCreateStructuredNote && (
+            <Button
+              onClick={handleCreateStructuredNote}
+              size="sm"
+              variant="outline"
+              className="font-medium shadow-lg hover:shadow-xl transition-shadow bg-background"
+              disabled={notes.length === 0 || isCreatingTopic || isCreatingStructured}
+              title="Create a structure note from all notes in this view"
+            >
+              {isCreatingStructured ? (
+                <>
+                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Structure ({notes.length})
+                </>
+              )}
+            </Button>
+          )}
         </div>
       )}
     </div>

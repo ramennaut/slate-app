@@ -8,4 +8,6 @@ export interface Note {
   isSummary?: boolean;
   linkedAtomicNoteIds?: string[];
   hubTheme?: string;
+  noteType?: 'source' | 'atomic' | 'hub' | 'structured';
+  globalNumber?: number;
 }

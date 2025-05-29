@@ -7,6 +7,8 @@ import { Save, Check, HelpCircle, X, Zap, ArrowLeft } from "lucide-react";
 import { generateAtomicNotes } from "@/lib/openai";
 import NoteContentRenderer from "./note-content-renderer";
 import HubNoteManager from "./hub-note-manager";
+import StructureNoteManager from "./structure-note-manager";
+import MarkdownEditor from "./markdown-editor";
 
 interface NoteEditorProps {
   note: Note;
@@ -59,7 +61,7 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
     // Reset history when note changes
     setHistory([note.content]);
     setHistoryIndex(0);
-  }, [note.id]);
+  }, [note.id, note.content, note.title]);
 
   // Add content to history (for undo/redo)
   const addToHistory = useCallback(
@@ -788,6 +790,45 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
                   </div>
                 )}
               </div>
+            ) : note.noteType === 'structured' ? (
+              /* Structure Note - Two-column layout with sources sidebar */
+              <div className="flex h-full gap-6">
+                {/* Main Content Area */}
+                <div className="flex-1 flex flex-col">
+                  <MarkdownEditor
+                    value={content}
+                    onChange={(value) => {
+                      setContent(value);
+                      // Set status to idle when content changes
+                      if (saveStatus === "saved") {
+                        setSaveStatus("idle");
+                      }
+                      // Add to history with a delay to avoid too many entries
+                      if (historyTimeoutRef.current) {
+                        clearTimeout(historyTimeoutRef.current);
+                      }
+                      historyTimeoutRef.current = setTimeout(() => {
+                        if (!isUndoRedoRef.current) {
+                          addToHistory(value);
+                        }
+                      }, 500);
+                    }}
+                    placeholder="Write your structure note in markdown..."
+                  />
+                </div>
+                
+                {/* Sources Sidebar */}
+                <div className="w-80 flex-shrink-0 border-l border-border/30 pl-6">
+                  {notes && onSelectNote && (
+                    <StructureNoteManager
+                      structureNote={note}
+                      allAtomicNotes={notes.filter(n => n.isAtomic)}
+                      onUpdateStructureNote={onSave}
+                      onSelectNote={onSelectNote}
+                    />
+                  )}
+                </div>
+              </div>
             ) : (
               /* Regular textarea for source notes */
               <textarea
@@ -898,7 +939,7 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
             </Button>
           )}
           {/* Only show Create Atomic Notes button for regular notes */}
-          {!note.isAtomic && !note.isSummary && (
+          {!note.isAtomic && !note.isSummary && note.noteType !== 'structured' && (
             <Button
               onClick={handleCreateAtomicNotes}
               size="sm"
