@@ -94,6 +94,7 @@ export default function NotesSidebar({
       }
       setSelectedNoteIds(newSelected);
       setLastClickedId(note.id);
+      // Don't call onSelectNote for multi-select operations
     } else if (event.shiftKey && lastClickedId) {
       // Shift + click: select range
       const allNoteIds = notes.map(n => n.id);
@@ -109,6 +110,7 @@ export default function NotesSidebar({
         rangeIds.forEach(id => newSelected.add(id));
         setSelectedNoteIds(newSelected);
       }
+      // Don't call onSelectNote for multi-select operations
     } else {
       // Regular click: ALWAYS clear selection and select note
       setSelectedNoteIds(new Set());
@@ -169,7 +171,7 @@ export default function NotesSidebar({
       setSelectedNoteIds(new Set());
       setLastClickedId(null);
     }
-  }, [activeNoteId, selectedNoteIds.size]);
+  }, [activeNoteId]); // Only fire when activeNoteId changes, not when selection size changes
 
   const toggleSection = (sectionName: string) => {
     const newCollapsed = new Set(collapsedSections);
