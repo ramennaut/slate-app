@@ -3,21 +3,30 @@
 import { Note } from "@/lib/types";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
-import { Save, Check, HelpCircle, X } from "lucide-react";
+import { Save, Check, HelpCircle, X, Zap, ArrowLeft } from "lucide-react";
+import { generateAtomicNotes } from "@/lib/openai";
+import NoteContentRenderer from "./note-content-renderer";
+import HubNoteManager from "./hub-note-manager";
+import StructureNoteManager from "./structure-note-manager";
+import MarkdownEditor from "./markdown-editor";
 
 interface NoteEditorProps {
   note: Note;
   onSave: (note: Note) => void;
+  onCreateAtomicNotes?: (atomicNotes: Array<{ title: string; content: string }>) => void;
+  onSelectNote?: (note: Note) => void;
+  notes?: Note[];
   isMobile?: boolean;
 }
 
-export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) {
+export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelectNote, notes, isMobile }: NoteEditorProps) {
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
     "saved"
   );
   const [showHelp, setShowHelp] = useState(false);
+  const [isGeneratingAtomicNotes, setIsGeneratingAtomicNotes] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef({ title: note.title, content: note.content });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -52,8 +61,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     // Reset history when note changes
     setHistory([note.content]);
     setHistoryIndex(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [note.id]); // Only reset when note ID changes, not content
+  }, [note.id, note.content, note.title]);
 
   // Add content to history (for undo/redo)
   const addToHistory = useCallback(
@@ -511,27 +519,6 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     return false; // Let normal backspace behavior handle it
   };
 
-  // Use useCallback to memoize the autoSave function to prevent stale closures
-  const autoSave = useCallback(() => {
-    const updatedNote = {
-      ...note,
-      title: title.trim() || "Untitled Note",
-      content,
-    };
-
-    // Only save if content has actually changed
-    if (hasUnsavedChanges()) {
-      setSaveStatus("saving");
-      onSave(updatedNote);
-      lastSavedRef.current = { title, content };
-
-      // Keep status as "saved" after successful save
-      setTimeout(() => {
-        setSaveStatus("saved");
-      }, 100);
-    }
-  }, [note, title, content, onSave, hasUnsavedChanges]);
-
   // Autosave effect
   useEffect(() => {
     // Clear existing timeout
@@ -539,11 +526,26 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
       clearTimeout(timeoutRef.current);
     }
 
+    // Check if there are unsaved changes
+    const hasChanges = lastSavedRef.current.title !== title || lastSavedRef.current.content !== content;
+
     // Only set timeout if there are actual changes to save
-    if (hasUnsavedChanges()) {
+    if (hasChanges) {
       // Set new timeout for autosave
       timeoutRef.current = setTimeout(() => {
-          autoSave();
+        const updatedNote = {
+          ...note,
+          title: title.trim() || "Untitled Note",
+          content,
+        };
+
+        setSaveStatus("saving");
+        onSave(updatedNote);
+        lastSavedRef.current = { title, content };
+
+        setTimeout(() => {
+          setSaveStatus("saved");
+        }, 100);
       }, 2000); // 2 seconds delay
     }
 
@@ -553,7 +555,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [autoSave, title, content, hasUnsavedChanges]);
+  }, [note, title, content, onSave]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -640,60 +642,209 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
     }
   }, [title, saveStatus]);
 
+  const handleCreateAtomicNotes = async () => {
+    if (isGeneratingAtomicNotes) return;
+
+    setIsGeneratingAtomicNotes(true);
+
+    const atomicNotes = await generateAtomicNotes(content);
+    
+    if (onCreateAtomicNotes && atomicNotes.length > 0) {
+      onCreateAtomicNotes(atomicNotes);
+    }
+
+    setIsGeneratingAtomicNotes(false);
+  };
+
   return (
     <div className="h-full flex flex-col max-w-4xl mx-auto">
-      {/* Title Section */}
-      <div className="pb-6 mb-8">
-        <textarea
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              if (textareaRef.current) {
-                textareaRef.current.focus();
+      {/* Title Section - Only show for regular notes */}
+      {!note.isAtomic && (
+        <div className="pb-6 mb-8">
+          <textarea
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (textareaRef.current) {
+                  textareaRef.current.focus();
+                }
               }
-            }
-            // Handle Ctrl+S (Save)
-            if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-              e.preventDefault();
-              handleManualSave();
-              return;
-            }
-          }}
-          placeholder="Note title"
-          className="text-3xl font-bold border-none px-0 py-0 focus-visible:ring-0 focus:ring-0 focus:outline-none bg-transparent shadow-none rounded-none outline-none h-auto w-full placeholder:text-muted-foreground/40 break-words resize-none overflow-hidden"
-          rows={1}
-          style={{
-            minHeight: "auto",
-            height: "auto",
-          }}
-          onInput={(e) => {
-            const target = e.target as HTMLTextAreaElement;
-            target.style.height = "auto";
-            target.style.height = target.scrollHeight + "px";
-          }}
-        />
-      </div>
+              // Handle Ctrl+S (Save)
+              if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+                e.preventDefault();
+                handleManualSave();
+                return;
+              }
+            }}
+            placeholder="Note title"
+            className="text-3xl font-bold border-none px-0 py-0 focus-visible:ring-0 focus:ring-0 focus:outline-none bg-transparent shadow-none rounded-none outline-none h-auto w-full placeholder:text-muted-foreground/40 break-words resize-none overflow-hidden"
+            rows={1}
+            style={{
+              minHeight: "auto",
+              height: "auto",
+            }}
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = "auto";
+              target.style.height = target.scrollHeight + "px";
+            }}
+            readOnly={note.isSummary}
+            disabled={note.isSummary}
+          />
+          
+          {/* Hub Note status indicator - right below title */}
+          {note.isSummary && (
+            <div className="mt-3 pt-3 border-t border-border/30">
+              <span className="flex items-center text-sm text-muted-foreground font-medium">
+                <div className="w-2 h-2 rounded-full bg-blue-500 mr-2"></div>
+                Hub Note • Read-only • Manage linked notes below
+              </span>
+            </div>
+          )}
+          
+          {/* Remove atomic note links for summary notes - they'll be managed below */}
+        </div>
+      )}
 
       {/* Content Section */}
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 flex overflow-hidden">
           {/* Simple Textarea Editor */}
           <div className="flex flex-col flex-1 overflow-hidden">
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={handleContentChange}
-              onKeyDown={handleKeyDown}
-              placeholder="Write your note here..."
-              className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 w-full overflow-y-auto"
-              style={{
-                fontFamily: "inherit",
-                fontSize: "16px",
-                lineHeight: "1.5em",
-              }}
-            />
+            {note.isAtomic ? (
+              /* Card-style container for atomic notes */
+              <div className="bg-card border border-border rounded-xl p-0 shadow-lg hover:shadow-xl transition-shadow duration-200 max-w-4xl mx-auto w-full">
+                {/* Card Header with back link */}
+                {note.sourceNoteId && notes && onSelectNote && (
+                  <div className="px-8 pt-6 pb-3 border-b border-border/50">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-muted-foreground hover:text-foreground p-1 h-auto -ml-1"
+                      onClick={() => {
+                        const sourceNote = notes.find(n => n.id === note.sourceNoteId);
+                        if (sourceNote) {
+                          onSelectNote(sourceNote);
+                        }
+                      }}
+                    >
+                      <ArrowLeft className="h-3 w-3 mr-1" />
+                      <span className="text-xs">
+                        {notes.find(n => n.id === note.sourceNoteId)?.title || "Source Note"}
+                      </span>
+                    </Button>
+                  </div>
+                )}
+                
+                {/* Card Content */}
+                <div className="p-8">
+                  <textarea
+                    ref={textareaRef}
+                    value={content}
+                    onChange={handleContentChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Write your atomic note here..."
+                    className="w-full resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-[400px] overflow-y-auto placeholder:text-muted-foreground/50"
+                    style={{
+                      fontFamily: "inherit",
+                      fontSize: "16px",
+                      lineHeight: "1.6em",
+                    }}
+                  />
+                </div>
+                
+                {/* Card Footer with metadata */}
+                <div className="px-8 pb-6 pt-3 border-t border-border/50">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Atomic Note</span>
+                    <span>{new Date(note.createdAt).toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}</span>
+                  </div>
+                </div>
+              </div>
+            ) : note.isSummary ? (
+              /* Hub Note - Show only description, no content editing */
+              <div className="max-w-4xl mx-auto w-full">
+                <div className="p-6 bg-muted/20 rounded-lg border border-border/30">
+                  <p className="text-base text-muted-foreground leading-relaxed">
+                    {content}
+                  </p>
+                </div>
+                
+                {/* Hub Note Manager - Right after description */}
+                {notes && onSelectNote && (
+                  <div className="mt-6">
+                    <HubNoteManager
+                      hubNote={note}
+                      allAtomicNotes={notes.filter(n => n.isAtomic)}
+                      onUpdateHubNote={onSave}
+                      onSelectNote={onSelectNote}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : note.noteType === 'structured' ? (
+              /* Structure Note - Two-column layout with sources sidebar */
+              <div className="flex h-full gap-6">
+                {/* Main Content Area */}
+                <div className="flex-1 flex flex-col">
+                  <MarkdownEditor
+                    value={content}
+                    onChange={(value) => {
+                      setContent(value);
+                      // Set status to idle when content changes
+                      if (saveStatus === "saved") {
+                        setSaveStatus("idle");
+                      }
+                      // Add to history with a delay to avoid too many entries
+                      if (historyTimeoutRef.current) {
+                        clearTimeout(historyTimeoutRef.current);
+                      }
+                      historyTimeoutRef.current = setTimeout(() => {
+                        if (!isUndoRedoRef.current) {
+                          addToHistory(value);
+                        }
+                      }, 500);
+                    }}
+                    placeholder="Write your structure note in markdown..."
+                  />
+                </div>
+                
+                {/* Sources Sidebar */}
+                <div className="w-80 flex-shrink-0 border-l border-border/30 pl-6">
+                  {notes && onSelectNote && (
+                    <StructureNoteManager
+                      structureNote={note}
+                      allAtomicNotes={notes.filter(n => n.isAtomic)}
+                      onUpdateStructureNote={onSave}
+                      onSelectNote={onSelectNote}
+                    />
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* Regular textarea for source notes */
+              <textarea
+                ref={textareaRef}
+                value={content}
+                onChange={handleContentChange}
+                onKeyDown={handleKeyDown}
+                placeholder="Write your note here..."
+                className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 w-full overflow-y-auto"
+                style={{
+                  fontFamily: "inherit",
+                  fontSize: "16px",
+                  lineHeight: "1.5em",
+                }}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -748,8 +899,8 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
                 <div className="border-t border-border pt-2 mt-2">
                   <div className="text-xs font-medium text-muted-foreground mb-2">Lists</div>
                   <div className="space-y-1 text-xs">
-                    <div>• Start with &ldquo;1. &rdquo; for numbered lists</div>
-                    <div>• Start with &ldquo;- &rdquo;, &ldquo;* &rdquo;, or &ldquo;• &rdquo; for bullet lists</div>
+                    <div>&bull; Start with &quot;1. &quot; for numbered lists</div>
+                    <div>&bull; Start with &quot;- &quot;, &quot;* &quot;, or &quot;&bull; &quot; for bullet lists</div>
                     <div>• Press Enter to continue list</div>
                     <div>• Press Tab to indent (4 spaces), Shift+Tab to unindent</div>
                     <div>• Press Backspace to remove entire indent levels</div>
@@ -777,7 +928,7 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
           {saveStatus === "saved" && "✓ All changes saved"}
         </div>
         <div className="flex space-x-2">
-          {(hasUnsavedChanges() || saveStatus === "saving") && (
+          {!note.isSummary && (hasUnsavedChanges() || saveStatus === "saving") && (
             <Button
               onClick={handleManualSave}
               disabled={saveStatus === "saving"}
@@ -785,6 +936,28 @@ export default function NoteEditor({ note, onSave, isMobile }: NoteEditorProps) 
               className="font-medium"
             >
               {getSaveButtonContent()}
+            </Button>
+          )}
+          {/* Only show Create Atomic Notes button for regular notes */}
+          {!note.isAtomic && !note.isSummary && note.noteType !== 'structured' && (
+            <Button
+              onClick={handleCreateAtomicNotes}
+              size="sm"
+              className="font-medium"
+              disabled={!content.trim() || content.trim().length < 100 || isGeneratingAtomicNotes}
+              title={content.trim().length < 100 ? "Note needs more content to split into atomic notes" : "Split this note into smaller, focused notes"}
+            >
+              {isGeneratingAtomicNotes ? (
+                <>
+                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Zap className="h-4 w-4 mr-2" />
+                  Create Atomic Notes
+                </>
+              )}
             </Button>
           )}
         </div>

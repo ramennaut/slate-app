@@ -4,10 +4,13 @@ import EmptyState from "@/components/empty-state";
 import Header from "@/components/header";
 import NotesSidebar from "@/components/notes-sidebar";
 import NoteEditor from "@/components/note-editor";
+import AtomicCardsView from "@/components/atomic-cards-view";
+import AtomicNotesPreview from "@/components/atomic-notes-preview";
 import { loadNotes, saveNotes } from "@/lib/storage";
 import { Note } from "@/lib/types";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Sparkles } from "lucide-react";
+import { analyzeAtomicNotesForHubNotes, generateHubNoteContent, generateStructureNoteTitle } from "@/lib/openai";
 
 const getRandomDefaultTitle = (): string => {
   const defaultTitles = [
@@ -24,6 +27,11 @@ const getRandomDefaultTitle = (): string => {
 export default function Home() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [activeNote, setActiveNote] = useState<Note | null>(null);
+  const [openAtomicNotes, setOpenAtomicNotes] = useState<Note[]>([]);
+  const [atomicNotesPreview, setAtomicNotesPreview] = useState<{
+    potentialNotes: Array<{ title: string; content: string }>;
+    sourceNote: Note;
+  } | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -94,7 +102,23 @@ export default function Home() {
   };
 
   const selectNote = (note: Note) => {
-    setActiveNote(note);
+    if (note.isAtomic) {
+      // For atomic notes, add to the multi-card view if not already open
+      setOpenAtomicNotes(prev => {
+        const isAlreadyOpen = prev.some(openNote => openNote.id === note.id);
+        if (isAlreadyOpen) {
+          return prev; // Don't add duplicates
+        }
+        return [...prev, note];
+      });
+      // Set this atomic note as "active" for sidebar selection/delete purposes
+      setActiveNote(note);
+    } else {
+      // For regular notes, set as active and clear atomic cards
+      setActiveNote(note);
+      setOpenAtomicNotes([]);
+    }
+    
     if (isMobile) { // On mobile, close sidebar when a note is selected to show the editor
       setIsMobileSidebarOpen(false);
     }
@@ -108,10 +132,17 @@ export default function Home() {
   };
 
   const deleteNote = (id: string) => {
+    const noteToDelete = notes.find(note => note.id === id);
     const noteIndex = notes.findIndex(note => note.id === id);
     const updatedNotes = notes.filter((note) => note.id !== id);
     setNotes(updatedNotes);
     
+    // If deleting an atomic note, also remove it from the open cards
+    if (noteToDelete?.isAtomic) {
+      setOpenAtomicNotes(prev => prev.filter(note => note.id !== id));
+    }
+    
+    // Handle active note logic
     if (activeNote && activeNote.id === id) {
       // Auto-select the next note for continuous deletion
       if (updatedNotes.length > 0) {
@@ -121,6 +152,283 @@ export default function Home() {
       } else {
         setActiveNote(null);
       }
+    }
+  };
+
+  const createAtomicNotes = (atomicNotes: Array<{ title: string; content: string }>) => {
+    if (atomicNotes.length === 0 || !activeNote) {
+      return;
+    }
+    
+    // Show preview modal instead of creating notes immediately
+    setAtomicNotesPreview({
+      potentialNotes: atomicNotes,
+      sourceNote: activeNote
+    });
+  };
+
+  const handleAtomicNotesApproval = async (approvedNotes: Array<{ title: string; content: string }>) => {
+    if (!atomicNotesPreview || approvedNotes.length === 0) {
+      setAtomicNotesPreview(null);
+      return;
+    }
+
+    // Find the highest existing global number
+    const existingAtomicNotes = notes.filter(note => note.isAtomic && note.globalNumber);
+    const highestNumber = existingAtomicNotes.length > 0 
+      ? Math.max(...existingAtomicNotes.map(note => note.globalNumber || 0))
+      : 0;
+
+    // Create new note objects from approved atomic notes with global numbers
+    const newNotes: Note[] = approvedNotes.map((atomicNote, index) => ({
+      id: `${Date.now()}-${index}`,
+      title: atomicNote.title,
+      content: atomicNote.content,
+      createdAt: Date.now() + index, // Slight offset to maintain order
+      isAtomic: true, // Mark as atomic note
+      sourceNoteId: atomicNotesPreview.sourceNote.id, // Link to the source note
+      globalNumber: highestNumber + index + 1, // Assign unique global number
+    }));
+
+    // Add the new atomic notes to the beginning of the notes list
+    const updatedNotes = [...newNotes, ...notes];
+    setNotes(updatedNotes);
+    
+    // Add all new atomic notes to the multi-card view
+    setOpenAtomicNotes([...newNotes]);
+    setActiveNote(null); // Clear regular note when showing atomic cards
+
+    // Close mobile sidebar if open
+    if (isMobile) {
+      setIsMobileSidebarOpen(false);
+    }
+
+    // Close the preview modal
+    setAtomicNotesPreview(null);
+
+    // Remove automatic hub note generation - users will create topics manually
+  };
+
+  const handleAtomicNotesCancel = () => {
+    setAtomicNotesPreview(null);
+  };
+
+  const closeAtomicCard = (noteId: string) => {
+    setOpenAtomicNotes(prev => prev.filter(note => note.id !== noteId));
+  };
+
+  const createTopicFromAtomicNotes = async (selectedAtomicNotes: Note[]) => {
+    if (selectedAtomicNotes.length < 1) {
+      console.warn('Need at least 1 atomic note to create a topic');
+      return;
+    }
+
+    try {
+      // Generate AI title and description based on atomic note content
+      const hubContent = await generateHubNoteContent(
+        selectedAtomicNotes.map(note => ({ content: note.content }))
+      );
+
+      const hubNote: Note = {
+        id: `hub-${Date.now()}`,
+        title: hubContent.title,
+        content: hubContent.description,
+        createdAt: Date.now(),
+        isSummary: true,
+        noteType: 'hub',
+        linkedAtomicNoteIds: selectedAtomicNotes.map(note => note.id),
+        hubTheme: hubContent.title,
+      };
+
+      // Add the new hub note
+      setNotes([hubNote, ...notes]);
+      
+      // Switch to the new hub note
+      setActiveNote(hubNote);
+      setOpenAtomicNotes([]); // Close flash card view
+      
+      // Close mobile sidebar if open
+      if (isMobile) {
+        setIsMobileSidebarOpen(false);
+      }
+
+      console.log(`Created topic: ${hubContent.title}`);
+    } catch (error) {
+      console.error('Error creating topic:', error);
+      
+      // Fallback to manual creation if AI fails
+      const fallbackTitle = selectedAtomicNotes.length === 1 
+        ? `Topic: ${selectedAtomicNotes[0].content.substring(0, 50)}${selectedAtomicNotes[0].content.length > 50 ? '...' : ''}`
+        : `Topic from ${selectedAtomicNotes.length} Notes`;
+      
+      const fallbackDescription = selectedAtomicNotes.length === 1
+        ? `This hub note is based on a single atomic note. Consider adding more related atomic notes to develop this topic further.`
+        : `This hub note connects ${selectedAtomicNotes.length} related atomic notes. Review the linked notes to identify common themes and patterns.`;
+
+      const fallbackHubNote: Note = {
+        id: `hub-${Date.now()}`,
+        title: fallbackTitle,
+        content: fallbackDescription,
+        createdAt: Date.now(),
+        isSummary: true,
+        noteType: 'hub',
+        linkedAtomicNoteIds: selectedAtomicNotes.map(note => note.id),
+        hubTheme: fallbackTitle,
+      };
+
+      setNotes([fallbackHubNote, ...notes]);
+      setActiveNote(fallbackHubNote);
+      setOpenAtomicNotes([]);
+      
+      if (isMobile) {
+        setIsMobileSidebarOpen(false);
+      }
+
+      console.log('Created fallback topic due to error');
+    }
+  };
+
+  const createSummaryNote = (summaryContent: string) => {
+    const summaryNote: Note = {
+      id: Date.now().toString(),
+      title: `Summary - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+      content: summaryContent,
+      createdAt: Date.now(),
+      isSummary: true,
+    };
+    
+    // Add the summary note to the beginning of the notes list
+    setNotes([summaryNote, ...notes]);
+    
+    // Switch to the summary note in the editor
+    setActiveNote(summaryNote);
+    setOpenAtomicNotes([]); // Close flash card view
+    
+    // Close mobile sidebar if open
+    if (isMobile) {
+      setIsMobileSidebarOpen(false);
+    }
+  };
+
+  const createStructuredNoteFromAtomicNotes = async (selectedAtomicNotes: Note[]) => {
+    if (selectedAtomicNotes.length === 0) {
+      console.warn('Need at least 1 atomic note to create a structure note');
+      return;
+    }
+
+    try {
+      // Generate AI title based on atomic note content
+      const generatedTitle = await generateStructureNoteTitle(
+        selectedAtomicNotes.map(note => ({ content: note.content }))
+      );
+
+      // Create content with reference IDs and integrated prose
+      const contentSections = selectedAtomicNotes.map((note) => {
+        // Use the atomic note's global number as reference
+        const refId = note.globalNumber || '?';
+        
+        // Create a paragraph that integrates the atomic note content with reference
+        return `${refId} ${note.content}`;
+      });
+
+      // Create a more sophisticated structure note with integrated content
+      const finalContent = `# ${generatedTitle}
+
+${contentSections.join('\n\n')}
+
+## Analysis and Connections
+
+The ideas presented above reveal several key patterns and relationships. ${selectedAtomicNotes.length > 1 ? 'When considered together, these concepts suggest...' : 'This concept suggests...'}
+
+> **Note:** Expand on the connections between these ideas
+
+## Implications for Practice
+
+These insights have practical implications for how we approach...
+
+> **Note:** Define key terms and concepts here
+
+## Further Development
+
+The relationships between these ideas point toward several areas for further exploration:
+
+> **Note:** What questions do these ideas raise?
+
+---
+
+*This structure note synthesizes ${selectedAtomicNotes.length} atomic note${selectedAtomicNotes.length > 1 ? 's' : ''} into coherent prose. Each referenced idea can be traced back to its source atomic note through the linked notes manager.*`;
+
+      const structuredNote: Note = {
+        id: `structured-${Date.now()}`,
+        title: generatedTitle,
+        content: finalContent,
+        createdAt: Date.now(),
+        noteType: 'structured',
+        linkedAtomicNoteIds: selectedAtomicNotes.map(note => note.id), // Track source atomic notes
+      };
+
+      // Add the new structured note
+      setNotes([structuredNote, ...notes]);
+      
+      // Switch to the new structured note
+      setActiveNote(structuredNote);
+      setOpenAtomicNotes([]); // Close flash card view
+      
+      // Close mobile sidebar if open
+      if (isMobile) {
+        setIsMobileSidebarOpen(false);
+      }
+
+      console.log(`Created structure note "${generatedTitle}" from ${selectedAtomicNotes.length} atomic notes`);
+    } catch (error) {
+      console.error('Error creating structure note:', error);
+      
+      // Fallback to manual creation if AI fails
+      const fallbackTitle = `Structure Note - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+      
+      const contentSections = selectedAtomicNotes.map((note) => {
+        const refId = note.globalNumber || '?';
+        return `${refId} ${note.content}`;
+      });
+
+      const finalContent = `# ${fallbackTitle}
+
+${contentSections.join('\n\n')}
+
+## Analysis and Connections
+
+The ideas presented above reveal several key patterns and relationships.
+
+> **Note:** Expand on the connections between these ideas
+
+## Implications for Practice
+
+These insights have practical implications for how we approach...
+
+> **Note:** Define key terms and concepts here
+
+---
+
+*This structure note synthesizes ${selectedAtomicNotes.length} atomic note${selectedAtomicNotes.length > 1 ? 's' : ''} into coherent prose.*`;
+
+      const structuredNote: Note = {
+        id: `structured-${Date.now()}`,
+        title: fallbackTitle,
+        content: finalContent,
+        createdAt: Date.now(),
+        noteType: 'structured',
+        linkedAtomicNoteIds: selectedAtomicNotes.map(note => note.id),
+      };
+
+      setNotes([structuredNote, ...notes]);
+      setActiveNote(structuredNote);
+      setOpenAtomicNotes([]);
+      
+      if (isMobile) {
+        setIsMobileSidebarOpen(false);
+      }
+
+      console.log(`Created fallback structure note from ${selectedAtomicNotes.length} atomic notes`);
     }
   };
 
@@ -141,12 +449,32 @@ export default function Home() {
       );
     }
 
-    if (activeNote) {
+    // Show multi-card view if atomic notes are open
+    if (openAtomicNotes.length > 0) {
+      return (
+        <AtomicCardsView
+          notes={openAtomicNotes}
+          allNotes={notes}
+          onSave={saveNote}
+          onSelectNote={selectNote}
+          onCloseCard={closeAtomicCard}
+          onCreateTopic={createTopicFromAtomicNotes}
+          onCreateStructuredNote={createStructuredNoteFromAtomicNotes}
+          onDeleteNote={deleteNote}
+          isMobile={isMobile}
+        />
+      );
+    }
+
+    if (activeNote && !activeNote.isAtomic) {
       return (
         <div className="h-full p-4 sm:p-6">
           <NoteEditor 
             note={activeNote} 
-            onSave={saveNote} 
+            onSave={saveNote}
+            onCreateAtomicNotes={createAtomicNotes}
+            onSelectNote={selectNote}
+            notes={notes}
             isMobile={isMobile}
           />
         </div>
@@ -167,11 +495,6 @@ export default function Home() {
     return null;
   };
 
-  // Determine sidebar width class based on state
-  // const sidebarWidthClass = isSidebarCollapsed ? "w-16" : (isMobile ? "w-full" : "w-80");
-  // Determine main content visibility
-  // const mainContentVisible = !isMobile || (isMobile && isSidebarCollapsed);
-
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
       <Header 
@@ -179,7 +502,7 @@ export default function Home() {
         toggleSidebar={handleToggleSidebar} 
         isMobile={isMobile} 
       />
-      <div className="flex flex-1 overflow-hidden"> {/* Parent overflow-hidden is key for clipping */} 
+      <div className="flex flex-1 overflow-hidden">
         {/* Unified Sidebar Container */} 
         <div 
           className={`transition-all duration-300 ease-in-out overflow-hidden ${ 
@@ -192,11 +515,6 @@ export default function Home() {
             height: 'calc(100vh - 2rem - 24px - 1px)'
           } : undefined}
         >
-          {/* Render NotesSidebar only if it's supposed to be visible (width > 0), 
-              or let NotesSidebar handle its internal empty state if container is w-0/w-16. 
-              For simplicity and to ensure transitions, NotesSidebar is always rendered here, 
-              and its internal state is managed by isCollapsed. 
-          */}
           <NotesSidebar
             notes={notes}
             onSelectNote={selectNote}
@@ -209,7 +527,7 @@ export default function Home() {
           />
         </div>
 
-        {/* Main Content Area - Modified for push effect, dimming, and click-to-close */} 
+        {/* Main Content Area */} 
         <div 
           className={`flex-1 h-full overflow-y-auto transition-all duration-300 ease-in-out ${ 
             isMobile && isMobileSidebarOpen ? 'opacity-50' : ''
@@ -219,6 +537,16 @@ export default function Home() {
           {renderNoteContent()}
         </div>
       </div>
+
+      {/* Atomic Notes Preview Modal */}
+      {atomicNotesPreview && (
+        <AtomicNotesPreview
+          potentialNotes={atomicNotesPreview.potentialNotes}
+          sourceNoteTitle={atomicNotesPreview.sourceNote.title || "Untitled Note"}
+          onApprove={handleAtomicNotesApproval}
+          onCancel={handleAtomicNotesCancel}
+        />
+      )}
     </div>
   );
 }
