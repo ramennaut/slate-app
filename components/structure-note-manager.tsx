@@ -3,7 +3,7 @@
 import { Note } from "@/lib/types";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
-import { Plus, X, Link, Unlink, Search, Hash } from "lucide-react";
+import { Plus, Unlink, Search, Hash } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 
 interface StructureNoteManagerProps {

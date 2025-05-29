@@ -10,7 +10,7 @@ import { loadNotes, saveNotes } from "@/lib/storage";
 import { Note } from "@/lib/types";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Sparkles } from "lucide-react";
-import { analyzeAtomicNotesForHubNotes, generateHubNoteContent, generateStructureNoteTitle } from "@/lib/openai";
+import { generateHubNoteContent, generateStructureNoteTitle } from "@/lib/openai";
 
 const getRandomDefaultTitle = (): string => {
   const defaultTitles = [
@@ -252,61 +252,9 @@ export default function Home() {
         setIsMobileSidebarOpen(false);
       }
 
-      console.log(`Created topic: ${hubContent.title}`);
     } catch (error) {
-      console.error('Error creating topic:', error);
-      
-      // Fallback to manual creation if AI fails
-      const fallbackTitle = selectedAtomicNotes.length === 1 
-        ? `Topic: ${selectedAtomicNotes[0].content.substring(0, 50)}${selectedAtomicNotes[0].content.length > 50 ? '...' : ''}`
-        : `Topic from ${selectedAtomicNotes.length} Notes`;
-      
-      const fallbackDescription = selectedAtomicNotes.length === 1
-        ? `This hub note is based on a single atomic note. Consider adding more related atomic notes to develop this topic further.`
-        : `This hub note connects ${selectedAtomicNotes.length} related atomic notes. Review the linked notes to identify common themes and patterns.`;
-
-      const fallbackHubNote: Note = {
-        id: `hub-${Date.now()}`,
-        title: fallbackTitle,
-        content: fallbackDescription,
-        createdAt: Date.now(),
-        isSummary: true,
-        noteType: 'hub',
-        linkedAtomicNoteIds: selectedAtomicNotes.map(note => note.id),
-        hubTheme: fallbackTitle,
-      };
-
-      setNotes([fallbackHubNote, ...notes]);
-      setActiveNote(fallbackHubNote);
-      setOpenAtomicNotes([]);
-      
-      if (isMobile) {
-        setIsMobileSidebarOpen(false);
-      }
-
-      console.log('Created fallback topic due to error');
-    }
-  };
-
-  const createSummaryNote = (summaryContent: string) => {
-    const summaryNote: Note = {
-      id: Date.now().toString(),
-      title: `Summary - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
-      content: summaryContent,
-      createdAt: Date.now(),
-      isSummary: true,
-    };
-    
-    // Add the summary note to the beginning of the notes list
-    setNotes([summaryNote, ...notes]);
-    
-    // Switch to the summary note in the editor
-    setActiveNote(summaryNote);
-    setOpenAtomicNotes([]); // Close flash card view
-    
-    // Close mobile sidebar if open
-    if (isMobile) {
-      setIsMobileSidebarOpen(false);
+      console.error("Error creating topic from atomic notes:", error);
+      // Handle error (e.g., show a notification to the user)
     }
   };
 

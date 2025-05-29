@@ -5,7 +5,6 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
 import { Save, Check, HelpCircle, X, Zap, ArrowLeft } from "lucide-react";
 import { generateAtomicNotes } from "@/lib/openai";
-import NoteContentRenderer from "./note-content-renderer";
 import HubNoteManager from "./hub-note-manager";
 import StructureNoteManager from "./structure-note-manager";
 import MarkdownEditor from "./markdown-editor";

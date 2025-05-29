@@ -270,7 +270,7 @@ export async function analyzeAtomicNotesForHubNotes(
   }
 
   try {
-    const atomicNotesText = atomicNotes.map((note, index) => 
+    const atomicNotesText = atomicNotes.map((note) => 
       `[${note.id}] ${note.content}`
     ).join('\n\n');
 

@@ -3,9 +3,8 @@
 import { Note } from "@/lib/types";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
-import { Plus, X, Link, Unlink, Search } from "lucide-react";
+import { Plus, Link, Unlink, Search } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
-import { generateHubNoteContent } from "@/lib/openai";
 
 interface HubNoteManagerProps {
   hubNote: Note;
@@ -63,9 +62,6 @@ export default function HubNoteManager({
 
   const addAtomicNote = (atomicNote: Note) => {
     const newLinkedIds = [...linkedAtomicNoteIds, atomicNote.id];
-    const allLinkedNotes = allAtomicNotes.filter(note => 
-      newLinkedIds.includes(note.id)
-    );
 
     // Keep the existing description since hub notes only have a 1-liner
     const updatedHubNote: Note = {
@@ -158,7 +154,7 @@ export default function HubNoteManager({
                     ))}
                     {filteredAvailableNotes.length === 0 && (
                       <div className="text-xs text-muted-foreground/60 text-center py-2">
-                        No notes found matching "{searchQuery}"
+                        No notes found matching &quot;{searchQuery}&quot;
                       </div>
                     )}
                   </div>
