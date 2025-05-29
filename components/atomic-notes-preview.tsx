@@ -66,8 +66,8 @@ export default function AtomicNotesPreview({
 
   const handleApprove = () => {
     const approved = potentialNotes
-      .map(({ title }, index) => ({
-        title: title,
+      .map((_, index) => ({
+        title: potentialNotes[index].title,
         content: getNoteContent(index)
       }))
       .filter((_, index) => selectedNotes.has(index));
@@ -87,7 +87,6 @@ export default function AtomicNotesPreview({
     : potentialNotes.map((_, index) => index);
 
   const renderNoteCard = (index: number) => {
-    const note = potentialNotes[index];
     const isSelected = selectedNotes.has(index);
     const isEditing = editingNotes.has(index);
     const content = getNoteContent(index);
