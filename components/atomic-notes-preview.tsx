@@ -66,8 +66,8 @@ export default function AtomicNotesPreview({
 
   const handleApprove = () => {
     const approved = potentialNotes
-      .map((note, index) => ({
-        title: note.title,
+      .map(({ title }, index) => ({
+        title: title,
         content: getNoteContent(index)
       }))
       .filter((_, index) => selectedNotes.has(index));
