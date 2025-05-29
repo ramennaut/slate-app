@@ -222,6 +222,17 @@ export default function AtomicCardsView({
               {notes.length}
             </span>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              notes.forEach(note => onCloseCard(note.id));
+            }}
+            className="text-xs font-medium"
+          >
+            <X className="h-3 w-3 mr-1" />
+            Clear All
+          </Button>
         </div>
         <p className="text-sm text-muted-foreground/80 ml-6">
           {(onCreateTopic || onCreateStructuredNote) ? "Create hub notes or structure notes from all notes in this view" : "Click and edit multiple notes simultaneously"}
@@ -236,7 +247,7 @@ export default function AtomicCardsView({
 
       {/* Floating Create Buttons */}
       {(onCreateTopic || onCreateStructuredNote) && (
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+        <div className="fixed bottom-6 right-6 z-50 flex gap-3">
           {onCreateTopic && (
             <Button
               onClick={handleCreateTopic}
@@ -253,7 +264,7 @@ export default function AtomicCardsView({
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  Create Topic ({notes.length})
+                  Create a Hub ({notes.length})
                 </>
               )}
             </Button>
@@ -263,8 +274,8 @@ export default function AtomicCardsView({
             <Button
               onClick={handleCreateStructuredNote}
               size="sm"
-              variant="outline"
-              className="font-medium shadow-lg hover:shadow-xl transition-shadow bg-background"
+              variant="default"
+              className="font-medium shadow-lg hover:shadow-xl transition-shadow"
               disabled={notes.length === 0 || isCreatingTopic || isCreatingStructured}
               title="Create a structure note from all notes in this view"
             >
@@ -276,7 +287,7 @@ export default function AtomicCardsView({
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  Create Structure ({notes.length})
+                  Expand this Topic ({notes.length})
                 </>
               )}
             </Button>
