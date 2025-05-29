@@ -10,7 +10,7 @@ import { loadNotes, saveNotes } from "@/lib/storage";
 import { Note } from "@/lib/types";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { Sparkles } from "lucide-react";
-import { generateHubNoteContent, generateStructureNoteTitle } from "@/lib/openai";
+import { generateHubNoteContent, generateStructureNoteTitle, answerQuestionWithAtomicNotes } from "@/lib/openai";
 
 const getRandomDefaultTitle = (): string => {
   const defaultTitles = [
@@ -35,6 +35,11 @@ export default function Home() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [searchAnswerData, setSearchAnswerData] = useState<{
+    answer: string;
+    question: string;
+  } | null>(null);
+  const [isRefreshingAnswer, setIsRefreshingAnswer] = useState(false);
 
   const handleContentAreaClick = () => {
     if (isMobile && isMobileSidebarOpen) {
@@ -117,6 +122,8 @@ export default function Home() {
       // For regular notes, set as active and clear atomic cards
       setActiveNote(note);
       setOpenAtomicNotes([]);
+      // Clear search results when navigating to a regular note
+      setSearchAnswerData(null);
     }
     
     if (isMobile) { // On mobile, close sidebar when a note is selected to show the editor
@@ -219,6 +226,11 @@ export default function Home() {
 
   const closeAtomicCard = (noteId: string) => {
     setOpenAtomicNotes(prev => prev.filter(note => note.id !== noteId));
+    
+    // If no more cards are open, clear search answer data
+    if (openAtomicNotes.length <= 1) {
+      setSearchAnswerData(null);
+    }
   };
 
   const createTopicFromAtomicNotes = async (selectedAtomicNotes: Note[]) => {
@@ -384,6 +396,219 @@ These insights have practical implications for how we approach...
     }
   };
 
+  // Add train of thought to structured note (new or existing)
+  const addTrainOfThoughtToStructuredNote = async (hubNote: Note, selectedStructuredNote?: Note) => {
+    const trainOfThought = hubNote.content; // The hub note's content is the train of thought
+    const hubTitle = hubNote.title || hubNote.hubTheme || "Hub Note Insight";
+    
+    if (selectedStructuredNote) {
+      // Add to existing structured note
+      const updatedContent = selectedStructuredNote.content + `\n\n## ${hubTitle}\n\n${trainOfThought}\n\n> **Source:** This insight comes from the hub note "${hubTitle}" which connects multiple atomic notes.\n\n---\n`;
+      
+      const updatedNote: Note = {
+        ...selectedStructuredNote,
+        content: updatedContent,
+      };
+      
+      setNotes(prev => prev.map(note => note.id === selectedStructuredNote.id ? updatedNote : note));
+      setActiveNote(updatedNote);
+      
+      console.log(`Added train of thought from "${hubTitle}" to existing structure note "${selectedStructuredNote.title}"`);
+    } else {
+      // Create new structured note with the train of thought
+      try {
+        const generatedTitle = await generateStructureNoteTitle([{ content: trainOfThought }]);
+        
+        const finalContent = `# ${generatedTitle}
+
+## ${hubTitle}
+
+${trainOfThought}
+
+> **Source:** This insight comes from the hub note "${hubTitle}" which connects multiple atomic notes.
+
+## Analysis and Development
+
+The train of thought above suggests several key ideas worth exploring further...
+
+> **Note:** Expand on how this insight connects to other concepts
+
+## Implications for Practice
+
+This perspective has practical implications for...
+
+> **Note:** Consider how this insight could be applied
+
+## Related Questions
+
+This train of thought raises several important questions:
+
+> **Note:** What questions does this insight bring up?
+
+---
+
+*This structure note began with insights from the hub note "${hubTitle}". Consider linking related atomic notes to develop these ideas further.*`;
+
+        const structuredNote: Note = {
+          id: `structured-${Date.now()}`,
+          title: generatedTitle,
+          content: finalContent,
+          createdAt: Date.now(),
+          noteType: 'structured',
+          linkedAtomicNoteIds: [], // Start with no linked atomic notes
+        };
+
+        // Add the new structured note
+        setNotes([structuredNote, ...notes]);
+        
+        // Switch to the new structured note
+        setActiveNote(structuredNote);
+        
+        // Close mobile sidebar if open
+        if (isMobile) {
+          setIsMobileSidebarOpen(false);
+        }
+
+        console.log(`Created new structure note "${generatedTitle}" from train of thought in hub note "${hubTitle}"`);
+      } catch (error) {
+        console.error('Error creating structure note from train of thought:', error);
+        
+        // Fallback to simple structure note
+        const fallbackTitle = `Structure Note - ${hubTitle}`;
+        
+        const finalContent = `# ${fallbackTitle}
+
+## ${hubTitle}
+
+${trainOfThought}
+
+> **Source:** This insight comes from the hub note "${hubTitle}" which connects multiple atomic notes.
+
+## Analysis and Development
+
+The train of thought above suggests several key ideas worth exploring further...
+
+---
+
+*This structure note began with insights from the hub note "${hubTitle}".*`;
+
+        const structuredNote: Note = {
+          id: `structured-${Date.now()}`,
+          title: fallbackTitle,
+          content: finalContent,
+          createdAt: Date.now(),
+          noteType: 'structured',
+          linkedAtomicNoteIds: [],
+        };
+
+        setNotes([structuredNote, ...notes]);
+        setActiveNote(structuredNote);
+        
+        if (isMobile) {
+          setIsMobileSidebarOpen(false);
+        }
+
+        console.log(`Created fallback structure note from train of thought in hub note "${hubTitle}"`);
+      }
+    }
+  };
+
+  // Handle RAG question submission
+  const handleQuestionSubmit = async (question: string): Promise<{ answer: string; sourcedNotes: Note[] }> => {
+    const atomicNotes = notes.filter(note => note.isAtomic);
+    
+    if (atomicNotes.length === 0) {
+      return {
+        answer: "You don't have any atomic notes yet. Create some atomic notes first by splitting your regular notes into smaller, focused ideas.",
+        sourcedNotes: []
+      };
+    }
+    
+    try {
+      const result = await answerQuestionWithAtomicNotes(
+        question, 
+        atomicNotes.map(note => ({
+          id: note.id,
+          content: note.content,
+          globalNumber: note.globalNumber
+        }))
+      );
+      
+      // Map back to full Note objects for display
+      const sourcedNotes = result.sourcedNotes.map(sourceNote => 
+        notes.find(note => note.id === sourceNote.id)
+      ).filter(note => note !== undefined) as Note[];
+      
+      return {
+        answer: result.answer,
+        sourcedNotes
+      };
+    } catch (error) {
+      console.error("Error in handleQuestionSubmit:", error);
+      return {
+        answer: `Something went wrong while processing your question: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
+        sourcedNotes: []
+      };
+    }
+  };
+
+  // Handle viewing search result sources as cards
+  const handleViewSourcesAsCards = (sourcedNotes: Note[], answer: string, question: string) => {
+    // Clear active note and set the sourced notes as open atomic notes
+    setActiveNote(null);
+    setOpenAtomicNotes(sourcedNotes);
+    
+    // Store the search answer data
+    setSearchAnswerData({ answer, question });
+    
+    // Close mobile sidebar if open
+    if (isMobile) {
+      setIsMobileSidebarOpen(false);
+    }
+  };
+
+  // Handle refreshing the search answer with updated atomic notes
+  const handleRefreshAnswer = async () => {
+    if (!searchAnswerData?.question || isRefreshingAnswer || openAtomicNotes.length === 0) return;
+    
+    setIsRefreshingAnswer(true);
+    
+    try {
+      // Use only the atomic notes currently shown in the flash card viewer
+      const result = await answerQuestionWithAtomicNotes(
+        searchAnswerData.question,
+        openAtomicNotes.map(note => ({
+          id: note.id,
+          content: note.content,
+          globalNumber: note.globalNumber
+        }))
+      );
+      
+      // Always update with the new answer (since function never returns null now)
+      setSearchAnswerData({ 
+        answer: result.answer, 
+        question: searchAnswerData.question 
+      });
+      // Note: We don't update openAtomicNotes here since we want to keep the current viewer state
+    } catch (error) {
+      console.error("Error refreshing answer:", error);
+      // Provide user feedback even on error
+      setSearchAnswerData({ 
+        answer: `Error refreshing answer: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`, 
+        question: searchAnswerData.question 
+      });
+    } finally {
+      setIsRefreshingAnswer(false);
+    }
+  };
+
+  // Handle closing the search answer
+  const handleCloseAnswer = () => {
+    setSearchAnswerData(null);
+    setOpenAtomicNotes([]);
+    setActiveNote(null);
+  };
+
   const renderNoteContent = () => {
     if (!activeNote && notes.length === 0) {
       return (
@@ -401,8 +626,8 @@ These insights have practical implications for how we approach...
       );
     }
 
-    // Show multi-card view if atomic notes are open
-    if (openAtomicNotes.length > 0) {
+    // Show search results or multi-card view if we have search data OR atomic notes are open
+    if (searchAnswerData || openAtomicNotes.length > 0) {
       return (
         <AtomicCardsView
           notes={openAtomicNotes}
@@ -414,6 +639,11 @@ These insights have practical implications for how we approach...
           onCreateStructuredNote={createStructuredNoteFromAtomicNotes}
           onDeleteNote={deleteNote}
           onCreateAtomicNotes={createAtomicNotes}
+          searchAnswer={searchAnswerData?.answer}
+          searchQuestion={searchAnswerData?.question}
+          onRefreshAnswer={handleRefreshAnswer}
+          isRefreshingAnswer={isRefreshingAnswer}
+          onCloseAnswer={handleCloseAnswer}
         />
       );
     }
@@ -428,6 +658,7 @@ These insights have practical implications for how we approach...
             onSelectNote={selectNote}
             notes={notes}
             isMobile={isMobile}
+            onAddTrainOfThoughtToStructuredNote={addTrainOfThoughtToStructuredNote}
           />
         </div>
       );
@@ -453,6 +684,9 @@ These insights have practical implications for how we approach...
         createNewNote={createNewNote} 
         toggleSidebar={handleToggleSidebar} 
         isMobile={isMobile} 
+        notes={notes}
+        onQuestionSubmit={handleQuestionSubmit}
+        onViewSourcesAsCards={handleViewSourcesAsCards}
       />
       <div className="flex flex-1 overflow-hidden">
         {/* Unified Sidebar Container */} 

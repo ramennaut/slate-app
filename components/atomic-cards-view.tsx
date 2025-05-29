@@ -3,9 +3,10 @@
 import { Note } from "@/lib/types";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
-import { ArrowLeft, X, Plus, Trash2, Layers, BookOpen } from "lucide-react";
-import { ScrollArea } from "./ui/scroll-area";
+import { ArrowLeft, X, Plus, Trash2, Layers, BookOpen, MessageCircle } from "lucide-react";
 import { generateTermDefinition } from "@/lib/openai";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface AtomicCardsViewProps {
   notes: Note[];
@@ -17,6 +18,11 @@ interface AtomicCardsViewProps {
   onCreateStructuredNote?: (selectedAtomicNotes: Note[]) => void;
   onDeleteNote?: (noteId: string) => void;
   onCreateAtomicNotes?: (atomicNotes: Array<{ title: string; content: string }>) => void;
+  searchAnswer?: string;
+  searchQuestion?: string;
+  onRefreshAnswer?: () => void;
+  isRefreshingAnswer?: boolean;
+  onCloseAnswer?: () => void;
 }
 
 interface CardState {
@@ -24,6 +30,153 @@ interface CardState {
     content: string;
     hasUnsavedChanges: boolean;
   };
+}
+
+// Component to render search answer with clickable atomic note references
+interface SearchAnswerDisplayProps {
+  answer: string;
+  question?: string;
+  noteCount: number;
+  onNoteClick: (noteReference: string) => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+  onClose?: () => void;
+}
+
+function SearchAnswerDisplay({ answer, question, noteCount, onNoteClick, onRefresh, isRefreshing, onClose }: SearchAnswerDisplayProps) {
+  // Component to render markdown with clickable note references
+  const MarkdownWithNoteRefs = ({ text }: { text: string }) => {
+    return (
+      <ReactMarkdown 
+        remarkPlugins={[remarkGfm]}
+        components={{
+          // Custom text renderer to handle AN-X references
+          text: ({ children }) => {
+            const textContent = String(children);
+            const parts = textContent.split(/(AN-\d+)/g);
+            
+            return (
+              <>
+                {parts.map((part, index) => {
+                  if (part.match(/^AN-\d+$/)) {
+                    return (
+                      <button
+                        key={index}
+                        className="text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary/60 transition-colors cursor-pointer"
+                        onClick={() => onNoteClick(part)}
+                      >
+                        {part}
+                      </button>
+                    );
+                  }
+                  return <span key={index}>{part}</span>;
+                })}
+              </>
+            );
+          },
+          // Style other markdown elements properly
+          p: ({ children }) => (
+            <p className="mb-3 last:mb-0">{children}</p>
+          ),
+          strong: ({ children }) => (
+            <strong className="font-semibold">{children}</strong>
+          ),
+          em: ({ children }) => (
+            <em className="italic">{children}</em>
+          ),
+          code: ({ children }) => (
+            <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">{children}</code>
+          ),
+          ul: ({ children }) => (
+            <ul className="list-disc list-outside mb-3 space-y-1 ml-6">{children}</ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="list-decimal list-outside mb-3 space-y-1 ml-6">{children}</ol>
+          ),
+          li: ({ children }) => (
+            <li className="leading-relaxed pl-2">{children}</li>
+          ),
+          h1: ({ children }) => (
+            <h1 className="text-lg font-bold mb-3 mt-4 first:mt-0">{children}</h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="text-md font-bold mb-2 mt-3 first:mt-0">{children}</h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="text-sm font-bold mb-2 mt-2 first:mt-0">{children}</h3>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-4 border-primary/30 pl-4 italic mb-3 mt-3">{children}</blockquote>
+          ),
+          pre: ({ children }) => (
+            <pre className="bg-muted p-3 rounded-lg overflow-x-auto text-xs font-mono mb-3 mt-3">{children}</pre>
+          ),
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    );
+  };
+
+  return (
+    <div className="mb-6 p-6 bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 rounded-xl">
+      <div className="flex items-start gap-3">
+        <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5">
+          <MessageCircle className="h-4 w-4 text-primary" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between mb-2">
+            <div className="flex-1">
+              {question && (
+                <div className="text-sm font-medium text-muted-foreground">
+                  Q: {question}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-1 ml-3">
+              {onRefresh && (
+                <Button
+                  onClick={onRefresh}
+                  disabled={isRefreshing}
+                  size="sm"
+                  variant="ghost"
+                  className="p-1.5 h-auto text-muted-foreground/60 hover:text-foreground hover:bg-background/50 rounded-lg transition-colors"
+                  title="Refresh answer with current notes"
+                >
+                  {isRefreshing ? (
+                    <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />
+                  ) : (
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  )}
+                </Button>
+              )}
+              {onClose && (
+                <Button
+                  onClick={onClose}
+                  size="sm"
+                  variant="ghost"
+                  className="p-1.5 h-auto text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                  title="Close search answer"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="prose prose-sm max-w-none text-foreground">
+            <div className="text-sm leading-relaxed">
+              <MarkdownWithNoteRefs text={answer} />
+            </div>
+          </div>
+          <div className="mt-3 text-xs text-muted-foreground">
+            📚 Based on {noteCount} source note{noteCount !== 1 ? 's' : ''} shown below
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function AtomicCardsView({
@@ -36,10 +189,16 @@ export default function AtomicCardsView({
   onCreateStructuredNote,
   onDeleteNote,
   onCreateAtomicNotes,
+  searchAnswer,
+  searchQuestion,
+  onRefreshAnswer,
+  isRefreshingAnswer,
+  onCloseAnswer,
 }: AtomicCardsViewProps) {
   const [cardStates, setCardStates] = useState<CardState>({});
   const [isCreatingTopic, setIsCreatingTopic] = useState(false);
   const [isCreatingStructured, setIsCreatingStructured] = useState(false);
+  const [highlightedNoteId, setHighlightedNoteId] = useState<string | null>(null);
   
   // Text selection and context menu state
   const [selectedText, setSelectedText] = useState("");
@@ -49,6 +208,7 @@ export default function AtomicCardsView({
   const [activeTextareaId, setActiveTextareaId] = useState<string | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const textareaRefs = useRef<{[key: string]: HTMLTextAreaElement | null}>({});
+  const cardRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
 
   const handleCreateTopic = async () => {
     if (!onCreateTopic || notes.length < 1) return;
@@ -231,17 +391,70 @@ export default function AtomicCardsView({
     };
   }, [showContextMenu]);
 
+  // Function to highlight a note by its global number
+  const highlightNoteByNumber = useCallback((globalNumber: number) => {
+    const note = notes.find(n => n.globalNumber === globalNumber);
+    if (note) {
+      setHighlightedNoteId(note.id);
+      
+      // Scroll to the note
+      const cardElement = cardRefs.current[note.id];
+      if (cardElement) {
+        cardElement.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'center'
+        });
+      }
+      
+      // Clear highlight after 3 seconds
+      setTimeout(() => {
+        setHighlightedNoteId(null);
+      }, 3000);
+    }
+  }, [notes]);
+
+  // Function to handle note reference clicks
+  const handleNoteClick = useCallback((noteReference: string) => {
+    const match = noteReference.match(/^AN-(\d+)$/);
+    if (match) {
+      const globalNumber = parseInt(match[1]);
+      highlightNoteByNumber(globalNumber);
+    }
+  }, [highlightNoteByNumber]);
+
   const renderCard = (note: Note) => {
     const content = getCardContent(note);
     const unsaved = hasUnsavedChanges(note);
+    const isHighlighted = highlightedNoteId === note.id;
 
     return (
       <div
         key={note.id}
-        className={`bg-card border rounded-2xl p-0 shadow-md hover:shadow-lg transition-all duration-300 w-full max-w-md group hover:scale-[1.02] ${
-          'border-border'
+        className={`bg-card border rounded-2xl p-0 shadow-md hover:shadow-lg transition-all duration-300 w-full max-w-md group hover:scale-[1.02] relative ${
+          isHighlighted 
+            ? 'border-transparent shadow-lg scale-[1.02]' 
+            : 'border-border'
         }`}
+        ref={(el) => {
+          cardRefs.current[note.id] = el;
+        }}
       >
+        {/* Rainbow border overlay when highlighted */}
+        {isHighlighted && (
+          <div 
+            className="absolute inset-0 rounded-2xl pointer-events-none"
+            style={{
+              background: 'linear-gradient(90deg, #ff9999 0%, #ffb366 12.5%, #ffdd66 25%, #99ff99 37.5%, #66b3ff 50%, #b366ff 62.5%, #ff66b3 75%, #66ffdd 87.5%, #66b3ff 100%)',
+              backgroundSize: '200% 100%',
+              animation: 'rainbow-border 3s ease-in-out infinite',
+              padding: '2px',
+              zIndex: -1
+            }}
+          >
+            <div className="w-full h-full bg-card rounded-2xl"></div>
+          </div>
+        )}
+        
         {/* Card Header */}
         <div className="px-5 pt-4 pb-3 border-b border-border/30 flex items-center justify-between">
           {/* Back link to source */}
@@ -367,18 +580,31 @@ export default function AtomicCardsView({
     );
   };
 
-  if (notes.length === 0) {
+  if (notes.length === 0 && !searchAnswer) {
     return null;
   }
 
   return (
-    <div className="h-full p-4 sm:p-6">
+    <div className="min-h-full p-4 sm:p-6">
+      {/* Search Answer Display */}
+      {searchAnswer && (
+        <SearchAnswerDisplay
+          answer={searchAnswer}
+          question={searchQuestion}
+          noteCount={notes.length}
+          onNoteClick={handleNoteClick}
+          onRefresh={onRefreshAnswer}
+          isRefreshing={isRefreshingAnswer}
+          onClose={onCloseAnswer}
+        />
+      )}
+      
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
             <Layers className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-bold text-foreground">
-              Flash Card View
+              {searchAnswer ? "Source Notes" : "Flash Card View"}
             </h2>
             <span className="px-2.5 py-1 bg-primary/10 text-primary text-xs font-semibold rounded-full">
               {notes.length}
@@ -392,20 +618,23 @@ export default function AtomicCardsView({
             }}
             className="text-xs font-medium"
           >
-            <X className="h-3 w-3 mr-1" />
-            Clear All
+            <Trash2 className="h-3 w-3 mr-1" />
+            Clear Cards
           </Button>
         </div>
         <p className="text-sm text-muted-foreground/80 ml-6">
-          {(onCreateTopic || onCreateStructuredNote) ? "Create hub notes or structure notes from all notes in this view" : "Click and edit multiple notes simultaneously"}
+          {searchAnswer 
+            ? "These are the atomic notes that informed the answer above" 
+            : (onCreateTopic || onCreateStructuredNote) 
+              ? "Create hub notes or structure notes from all notes in this view" 
+              : "Click and edit multiple notes simultaneously"
+          }
         </p>
       </div>
       
-      <ScrollArea className="h-[calc(100%-100px)]">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pb-6">
-          {notes.map(note => renderCard(note))}
-        </div>
-      </ScrollArea>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 pb-20">
+        {notes.map(note => renderCard(note))}
+      </div>
 
       {/* Floating Create Buttons */}
       {(onCreateTopic || onCreateStructuredNote) && (

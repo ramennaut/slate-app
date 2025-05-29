@@ -711,3 +711,388 @@ Return ONLY a valid JSON object with this exact structure:
     return null;
   }
 }
+
+// Helper function to calculate cosine similarity between two vectors
+function cosineSimilarity(vecA: number[], vecB: number[]): number {
+  const dotProduct = vecA.reduce((sum, a, i) => sum + a * vecB[i], 0);
+  const magnitudeA = Math.sqrt(vecA.reduce((sum, a) => sum + a * a, 0));
+  const magnitudeB = Math.sqrt(vecB.reduce((sum, b) => sum + b * b, 0));
+  return dotProduct / (magnitudeA * magnitudeB);
+}
+
+// Cache for embeddings to avoid repeated API calls
+const embeddingCache = new Map<string, number[]>();
+
+async function getEmbedding(text: string): Promise<number[]> {
+  // Check cache first
+  if (embeddingCache.has(text)) {
+    return embeddingCache.get(text)!;
+  }
+
+  try {
+    const response = await openai.embeddings.create({
+      model: "text-embedding-3-small", // Cost-effective embedding model
+      input: text.substring(0, 8000), // Limit text length for API
+    });
+
+    const embedding = response.data[0].embedding;
+    embeddingCache.set(text, embedding);
+    return embedding;
+  } catch (error) {
+    console.error("Error getting embedding:", error);
+    throw error;
+  }
+}
+
+export async function answerQuestionWithAtomicNotes(
+  question: string,
+  atomicNotes: Array<{ id: string; content: string; globalNumber?: number }>
+): Promise<{ answer: string; sourcedNotes: Array<{ id: string; content: string; globalNumber?: number }> }> {
+  
+  // Handle empty question
+  if (!question.trim()) {
+    return {
+      answer: "I need a question to answer! Please type something and try again.",
+      sourcedNotes: []
+    };
+  }
+
+  // Handle no atomic notes
+  if (atomicNotes.length === 0) {
+    return {
+      answer: "You don't have any atomic notes yet. Create some atomic notes first by splitting your regular notes into smaller, focused ideas, then ask me questions about them!",
+      sourcedNotes: []
+    };
+  }
+
+  // Check if API key is available
+  if (!process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
+    return {
+      answer: "OpenAI API key is not configured. I need access to OpenAI's services to search your notes and provide answers. Please check your API key configuration.",
+      sourcedNotes: []
+    };
+  }
+
+  try {
+    // Get embedding for the question
+    console.log("Getting embedding for question:", question);
+    let questionEmbedding: number[];
+    
+    try {
+      questionEmbedding = await getEmbedding(question);
+    } catch (embeddingError) {
+      console.error("Failed to get question embedding:", embeddingError);
+      // Fall back to keyword-only search
+      return await fallbackKeywordSearch(question, atomicNotes);
+    }
+
+    // Get embeddings for all atomic notes and calculate similarity
+    console.log(`Processing ${atomicNotes.length} atomic notes for similarity...`);
+    const notesWithSimilarity = await Promise.all(
+      atomicNotes.map(async (note) => {
+        try {
+          const noteEmbedding = await getEmbedding(note.content);
+          const similarity = cosineSimilarity(questionEmbedding, noteEmbedding);
+          return { note, similarity };
+        } catch (error) {
+          console.error(`Error getting embedding for note ${note.id}:`, error);
+          // Fallback to keyword matching for this note
+          const questionWords = question.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+          const noteContent = note.content.toLowerCase();
+          let keywordScore = 0;
+          
+          questionWords.forEach(word => {
+            if (noteContent.includes(word)) {
+              keywordScore += 0.1; // Low score as fallback
+            }
+          });
+          
+          return { note, similarity: keywordScore };
+        }
+      })
+    );
+
+    // Log similarity scores for debugging
+    const sortedByScore = notesWithSimilarity.sort((a, b) => b.similarity - a.similarity);
+    console.log("Top 5 similarity scores:", sortedByScore.slice(0, 5).map(n => ({ 
+      content: n.note.content.substring(0, 50) + "...", 
+      similarity: n.similarity 
+    })));
+
+    // Try different thresholds progressively
+    let relevantNotes = sortedByScore
+      .filter(result => result.similarity > 0.2) // Even lower threshold
+      .slice(0, 12)
+      .map(result => result.note);
+
+    console.log(`Found ${relevantNotes.length} notes with similarity > 0.2`);
+
+    // If still not enough, try even lower threshold
+    if (relevantNotes.length < 2) {
+      relevantNotes = sortedByScore
+        .filter(result => result.similarity > 0.1)
+        .slice(0, 12)
+        .map(result => result.note);
+      console.log(`Found ${relevantNotes.length} notes with similarity > 0.1`);
+    }
+
+    // If still not enough, take the top scoring notes regardless of threshold
+    if (relevantNotes.length < 2) {
+      relevantNotes = sortedByScore
+        .slice(0, 8) // Take top 8 no matter what
+        .map(result => result.note);
+      console.log(`Taking top ${relevantNotes.length} notes regardless of score`);
+    }
+
+    // If semantic search doesn't find enough results, fall back to keyword matching
+    if (relevantNotes.length < 3) {
+      console.log("Semantic search found few results, adding keyword matches...");
+      
+      const keywordMatches = atomicNotes
+        .filter(note => !relevantNotes.some(rNote => rNote.id === note.id)) // Don't duplicate
+        .map(note => {
+          let score = 0;
+          const noteContent = note.content.toLowerCase();
+          const questionWords = question.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+          
+          questionWords.forEach(word => {
+            if (noteContent.includes(word)) {
+              score += word.length;
+            }
+          });
+          
+          return { note, score };
+        })
+        .filter(result => result.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 6)
+        .map(result => result.note);
+      
+      console.log(`Adding ${keywordMatches.length} keyword matches`);
+      relevantNotes.push(...keywordMatches);
+    }
+
+    console.log(`Final relevant notes count: ${relevantNotes.length}`);
+
+    if (relevantNotes.length === 0) {
+      // Provide detailed debugging info
+      const maxSimilarity = Math.max(...sortedByScore.map(n => n.similarity));
+      const hasKeywordMatches = atomicNotes.some(note => {
+        const noteContent = note.content.toLowerCase();
+        const questionWords = question.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+        return questionWords.some(word => noteContent.includes(word));
+      });
+
+      return {
+        answer: `I couldn't find relevant atomic notes for your question. Here's what I found:
+
+**Semantic Analysis:**
+• Highest similarity score: ${maxSimilarity.toFixed(3)} (needs >0.1 to be useful)
+• Your question: "${question}"
+• Notes analyzed: ${atomicNotes.length}
+
+**Keyword Analysis:**
+• Found keyword matches: ${hasKeywordMatches ? 'Yes' : 'No'}
+
+**Possible reasons:**
+• The topic isn't covered in your atomic notes yet
+• Your question uses very different language than your notes
+• Your notes might be too general/abstract for this specific question
+
+**Suggestions:**
+• Try rephrasing with different words
+• Create atomic notes on this topic first
+• Break down your question into simpler parts`,
+        sourcedNotes: []
+      };
+    }
+
+    // Generate context from relevant notes
+    const context = relevantNotes
+      .map(note => {
+        const refId = note.globalNumber ? `AN-${note.globalNumber}` : `Note-${note.id.slice(-4)}`;
+        return `[${refId}] ${note.content}`;
+      })
+      .join('\n\n');
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are an intelligent assistant that answers questions based on a user's atomic notes collection. 
+
+ANALYSIS FRAMEWORK - What can you answer?
+Before responding, analyze what the question is asking for:
+
+1. FACTUAL CLAIMS about specific people, organizations, or events:
+   - Example: "What does Obama think about AI safety?"
+   - Rule: ONLY if explicitly mentioned in notes. Otherwise, clearly state you don't have that information.
+
+2. CONCEPTUAL EXPLANATIONS or educational requests:
+   - Examples: "Explain X like I'm 5", "How does X work?", "What is the significance of Y?"
+   - Rule: CAN answer if the atomic notes contain relevant concepts, even if not explicitly structured as an explanation.
+
+3. RELATIONSHIP and CONNECTION questions:
+   - Examples: "How does A relate to B?", "What leads to X?", "What are the implications of Y?"
+   - Rule: CAN answer by synthesizing information from multiple notes that discuss related concepts.
+
+4. SYNTHESIS and ANALYSIS questions:
+   - Examples: "What are the main themes?", "What patterns emerge?", "What conclusions can be drawn?"
+   - Rule: CAN answer by analyzing and connecting information across notes.
+
+5. PERSONAL REFLECTION and SELF-ASSESSMENT questions:
+   - Examples: "Am I being too harsh?", "What kind of person am I?", "Am I making good decisions?"
+   - Rule: CAN answer by analyzing patterns in notes about the user's behavior, relationships, actions, feedback received, conflicts, decisions, etc. Present what the notes reveal and let the user draw conclusions.
+
+ANSWER APPROACH:
+- For Type 1 (Factual): Be strict - only answer if explicitly stated
+- For Types 2-5 (Conceptual/Relational/Personal): You may synthesize and explain based on relevant concepts in the notes
+- Always cite specific notes (AN-X format) that inform your response
+- Be transparent about what you're doing: "Based on the patterns in your notes, I can see..." vs "Your notes specifically state..."
+- For personal questions: Present evidence from the notes, avoid definitive judgments, encourage self-reflection
+
+WHEN TO DECLINE:
+- When asked about specific people/organizations not mentioned in notes
+- When the question requires information completely absent from the note collection
+- When the question asks for predictions or opinions not supported by the notes
+
+CITATION RULES:
+- ALWAYS cite specific atomic note references (AN-X format)
+- Make citations natural: "According to AN-3..." or "As described in AN-7..."
+- For synthesis answers, cite all relevant contributing notes
+
+The atomic notes are prefixed with their reference numbers in [brackets].`
+          },
+          {
+            role: "user",
+            content: `Question: ${question}
+
+Relevant atomic notes:
+${context}
+
+Please answer the question based on these atomic notes, citing the specific note references (AN-X) where you found the information.`
+          }
+        ],
+        temperature: 0.3,
+        max_tokens: 800,
+      });
+
+      const answer = response.choices[0]?.message?.content?.trim();
+
+      if (!answer) {
+        return {
+          answer: `I received an empty response from the AI service. This is unusual. Here's what I tried:
+
+• Question: "${question}"
+• Relevant notes found: ${relevantNotes.length}
+• Context provided: ${context.length} characters
+
+Please try rephrasing your question or contact support if this persists.`,
+          sourcedNotes: relevantNotes
+        };
+      }
+
+      // Extract cited note references from the answer
+      const citedReferences: string[] = answer.match(/AN-\d+/g) || [];
+      
+      // Filter source notes to only include those that were actually cited
+      const actuallySourcedNotes = relevantNotes.filter(note => {
+        const refId = note.globalNumber ? `AN-${note.globalNumber}` : `Note-${note.id.slice(-4)}`;
+        return citedReferences.includes(refId);
+      });
+
+      return {
+        answer,
+        sourcedNotes: actuallySourcedNotes
+      };
+
+    } catch (chatError) {
+      console.error("Error with OpenAI chat completion:", chatError);
+      return {
+        answer: `I found ${relevantNotes.length} relevant notes for your question, but encountered an error while generating the response:
+
+**Your question:** "${question}"
+**Error:** ${chatError instanceof Error ? chatError.message : 'Unknown error'}
+
+**The notes I found seem related to:**
+${relevantNotes.slice(0, 3).map((note, i) => `${i + 1}. ${note.content.substring(0, 100)}...`).join('\n')}
+
+Please try again, or try rephrasing your question.`,
+        sourcedNotes: relevantNotes
+      };
+    }
+
+  } catch (error) {
+    console.error("Unexpected error in answerQuestionWithAtomicNotes:", error);
+    return {
+      answer: `Something unexpected went wrong while processing your question. Here's what I know:
+
+**Your question:** "${question}"
+**Atomic notes available:** ${atomicNotes.length}
+**Error:** ${error instanceof Error ? error.message : 'Unknown error'}
+
+This might be a temporary issue. Please try again, or try a simpler question to test if the service is working.`,
+      sourcedNotes: []
+    };
+  }
+}
+
+// Fallback keyword search when embeddings fail
+async function fallbackKeywordSearch(
+  question: string, 
+  atomicNotes: Array<{ id: string; content: string; globalNumber?: number }>
+): Promise<{ answer: string; sourcedNotes: Array<{ id: string; content: string; globalNumber?: number }> }> {
+  
+  console.log("Using fallback keyword search");
+  
+  const questionWords = question.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+  
+  const keywordMatches = atomicNotes
+    .map(note => {
+      let score = 0;
+      const noteContent = note.content.toLowerCase();
+      
+      questionWords.forEach(word => {
+        if (noteContent.includes(word)) {
+          score += word.length;
+        }
+      });
+      
+      return { note, score };
+    })
+    .filter(result => result.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (keywordMatches.length === 0) {
+    return {
+      answer: `I couldn't find any notes matching your question using keyword search (semantic search failed). 
+
+**Your question:** "${question}"
+**Keywords I looked for:** ${questionWords.join(', ')}
+**Notes searched:** ${atomicNotes.length}
+
+Try using different words or create atomic notes on this topic first.`,
+      sourcedNotes: []
+    };
+  }
+
+  const relevantNotes = keywordMatches.slice(0, 8).map(result => result.note);
+  
+  return {
+    answer: `I found some relevant notes using keyword search (note: semantic search is currently unavailable):
+
+**Your question:** "${question}"
+**Matching notes:** ${relevantNotes.length}
+
+Based on keyword matches, here are the most relevant notes:
+${relevantNotes.slice(0, 3).map((note) => {
+  const refId = note.globalNumber ? `AN-${note.globalNumber}` : `Note-${note.id.slice(-4)}`;
+  return `${refId}: ${note.content}`;
+}).join('\n\n')}
+
+For better results, please check your internet connection and try again.`,
+    sourcedNotes: relevantNotes
+  };
+}
