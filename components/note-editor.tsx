@@ -16,9 +16,10 @@ interface NoteEditorProps {
   onSelectNote?: (note: Note) => void;
   notes?: Note[];
   isMobile?: boolean;
+  onAddTrainOfThoughtToStructuredNote?: (hubNote: Note, selectedStructuredNote?: Note) => Promise<void>;
 }
 
-export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelectNote, notes, isMobile }: NoteEditorProps) {
+export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelectNote, notes, isMobile, onAddTrainOfThoughtToStructuredNote }: NoteEditorProps) {
   const [title, setTitle] = useState(note.title);
   const [content, setContent] = useState(note.content);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
@@ -942,6 +943,8 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
                       allAtomicNotes={notes.filter(n => n.isAtomic)}
                       onUpdateHubNote={onSave}
                       onSelectNote={onSelectNote}
+                      onAddTrainOfThoughtToStructuredNote={onAddTrainOfThoughtToStructuredNote}
+                      allStructuredNotes={notes.filter(n => n.noteType === 'structured')}
                     />
                   </div>
                 )}

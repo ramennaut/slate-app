@@ -384,6 +384,123 @@ These insights have practical implications for how we approach...
     }
   };
 
+  // Add train of thought to structured note (new or existing)
+  const addTrainOfThoughtToStructuredNote = async (hubNote: Note, selectedStructuredNote?: Note) => {
+    const trainOfThought = hubNote.content; // The hub note's content is the train of thought
+    const hubTitle = hubNote.title || hubNote.hubTheme || "Hub Note Insight";
+    
+    if (selectedStructuredNote) {
+      // Add to existing structured note
+      const updatedContent = selectedStructuredNote.content + `\n\n## ${hubTitle}\n\n${trainOfThought}\n\n> **Source:** This insight comes from the hub note "${hubTitle}" which connects multiple atomic notes.\n\n---\n`;
+      
+      const updatedNote: Note = {
+        ...selectedStructuredNote,
+        content: updatedContent,
+      };
+      
+      setNotes(prev => prev.map(note => note.id === selectedStructuredNote.id ? updatedNote : note));
+      setActiveNote(updatedNote);
+      
+      console.log(`Added train of thought from "${hubTitle}" to existing structure note "${selectedStructuredNote.title}"`);
+    } else {
+      // Create new structured note with the train of thought
+      try {
+        const generatedTitle = await generateStructureNoteTitle([{ content: trainOfThought }]);
+        
+        const finalContent = `# ${generatedTitle}
+
+## ${hubTitle}
+
+${trainOfThought}
+
+> **Source:** This insight comes from the hub note "${hubTitle}" which connects multiple atomic notes.
+
+## Analysis and Development
+
+The train of thought above suggests several key ideas worth exploring further...
+
+> **Note:** Expand on how this insight connects to other concepts
+
+## Implications for Practice
+
+This perspective has practical implications for...
+
+> **Note:** Consider how this insight could be applied
+
+## Related Questions
+
+This train of thought raises several important questions:
+
+> **Note:** What questions does this insight bring up?
+
+---
+
+*This structure note began with insights from the hub note "${hubTitle}". Consider linking related atomic notes to develop these ideas further.*`;
+
+        const structuredNote: Note = {
+          id: `structured-${Date.now()}`,
+          title: generatedTitle,
+          content: finalContent,
+          createdAt: Date.now(),
+          noteType: 'structured',
+          linkedAtomicNoteIds: [], // Start with no linked atomic notes
+        };
+
+        // Add the new structured note
+        setNotes([structuredNote, ...notes]);
+        
+        // Switch to the new structured note
+        setActiveNote(structuredNote);
+        
+        // Close mobile sidebar if open
+        if (isMobile) {
+          setIsMobileSidebarOpen(false);
+        }
+
+        console.log(`Created new structure note "${generatedTitle}" from train of thought in hub note "${hubTitle}"`);
+      } catch (error) {
+        console.error('Error creating structure note from train of thought:', error);
+        
+        // Fallback to simple structure note
+        const fallbackTitle = `Structure Note - ${hubTitle}`;
+        
+        const finalContent = `# ${fallbackTitle}
+
+## ${hubTitle}
+
+${trainOfThought}
+
+> **Source:** This insight comes from the hub note "${hubTitle}" which connects multiple atomic notes.
+
+## Analysis and Development
+
+The train of thought above suggests several key ideas worth exploring further...
+
+---
+
+*This structure note began with insights from the hub note "${hubTitle}".*`;
+
+        const structuredNote: Note = {
+          id: `structured-${Date.now()}`,
+          title: fallbackTitle,
+          content: finalContent,
+          createdAt: Date.now(),
+          noteType: 'structured',
+          linkedAtomicNoteIds: [],
+        };
+
+        setNotes([structuredNote, ...notes]);
+        setActiveNote(structuredNote);
+        
+        if (isMobile) {
+          setIsMobileSidebarOpen(false);
+        }
+
+        console.log(`Created fallback structure note from train of thought in hub note "${hubTitle}"`);
+      }
+    }
+  };
+
   const renderNoteContent = () => {
     if (!activeNote && notes.length === 0) {
       return (
@@ -428,6 +545,7 @@ These insights have practical implications for how we approach...
             onSelectNote={selectNote}
             notes={notes}
             isMobile={isMobile}
+            onAddTrainOfThoughtToStructuredNote={addTrainOfThoughtToStructuredNote}
           />
         </div>
       );
