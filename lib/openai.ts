@@ -711,3 +711,111 @@ Return ONLY a valid JSON object with this exact structure:
     return null;
   }
 }
+
+export async function answerQuestionWithAtomicNotes(
+  question: string,
+  atomicNotes: Array<{ id: string; content: string; globalNumber?: number }>
+): Promise<{ answer: string; sourcedNotes: Array<{ id: string; content: string; globalNumber?: number }> } | null> {
+  if (!question.trim() || atomicNotes.length === 0) {
+    return null;
+  }
+
+  // Check if API key is available
+  if (!process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
+    console.warn("OpenAI API key not found, cannot answer question");
+    return null;
+  }
+
+  try {
+    // First, find the most relevant atomic notes using embedding similarity
+    // For now, we'll use a simpler keyword-based relevance scoring
+    const relevantNotes = atomicNotes
+      .map(note => {
+        let score = 0;
+        const noteContent = note.content.toLowerCase();
+        const questionWords = question.toLowerCase().split(/\s+/).filter(word => word.length > 2);
+        
+        // Score based on keyword matches
+        questionWords.forEach(word => {
+          if (noteContent.includes(word)) {
+            score += word.length; // Longer words get higher scores
+            
+            // Bonus for word boundary matches
+            const wordBoundaryRegex = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+            if (wordBoundaryRegex.test(note.content)) {
+              score += 5;
+            }
+          }
+        });
+        
+        return { note, score };
+      })
+      .filter(result => result.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 8) // Take top 8 most relevant notes
+      .map(result => result.note);
+
+    if (relevantNotes.length === 0) {
+      return {
+        answer: "I couldn't find any atomic notes that seem relevant to your question. Try rephrasing your question or creating atomic notes on this topic first.",
+        sourcedNotes: []
+      };
+    }
+
+    // Generate context from relevant notes
+    const context = relevantNotes
+      .map(note => {
+        const refId = note.globalNumber ? `AN-${note.globalNumber}` : `Note-${note.id.slice(-4)}`;
+        return `[${refId}] ${note.content}`;
+      })
+      .join('\n\n');
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are an intelligent assistant that answers questions based on a user's atomic notes collection. 
+
+IMPORTANT GUIDELINES:
+1. Base your answer ONLY on the provided atomic notes context
+2. ALWAYS cite specific atomic note references (like AN-1, AN-5) when making claims
+3. If the notes don't contain enough information to answer fully, say so
+4. Use the exact reference format: AN-X where X is the number
+5. Make your answer conversational but precise
+6. If multiple notes support a point, cite all relevant ones
+7. Don't make up information not found in the notes
+
+Format your citations naturally in the text like: "According to AN-3, machine learning requires..."
+
+The atomic notes are prefixed with their reference numbers in [brackets].`
+        },
+        {
+          role: "user",
+          content: `Question: ${question}
+
+Relevant atomic notes:
+${context}
+
+Please answer the question based on these atomic notes, citing the specific note references (AN-X) where you found the information.`
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 800,
+    });
+
+    const answer = response.choices[0]?.message?.content?.trim();
+
+    if (!answer) {
+      throw new Error("No response generated");
+    }
+
+    return {
+      answer,
+      sourcedNotes: relevantNotes
+    };
+  } catch (error) {
+    console.error("Error answering question with atomic notes:", error);
+    return null;
+  }
+}
