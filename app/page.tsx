@@ -413,6 +413,7 @@ These insights have practical implications for how we approach...
           onCreateTopic={createTopicFromAtomicNotes}
           onCreateStructuredNote={createStructuredNoteFromAtomicNotes}
           onDeleteNote={deleteNote}
+          onCreateAtomicNotes={createAtomicNotes}
         />
       );
     }

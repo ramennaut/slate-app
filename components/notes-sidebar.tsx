@@ -165,12 +165,13 @@ export default function NotesSidebar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [selectedNoteIds]);
 
-  // Clear selection when active note changes
+  // Clear selection when active note changes (but not when selection size changes)
   useEffect(() => {
     if (activeNoteId && selectedNoteIds.size > 0) {
       setSelectedNoteIds(new Set());
       setLastClickedId(null);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeNoteId]); // Only fire when activeNoteId changes, not when selection size changes
 
   const toggleSection = (sectionName: string) => {

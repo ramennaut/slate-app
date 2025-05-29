@@ -3,8 +3,8 @@
 import { Note } from "@/lib/types";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "./ui/button";
-import { Save, Check, HelpCircle, X, Zap, ArrowLeft } from "lucide-react";
-import { generateAtomicNotes } from "@/lib/openai";
+import { Save, Check, HelpCircle, X, Zap, ArrowLeft, BookOpen } from "lucide-react";
+import { generateAtomicNotes, generateTermDefinition } from "@/lib/openai";
 import HubNoteManager from "./hub-note-manager";
 import StructureNoteManager from "./structure-note-manager";
 import MarkdownEditor from "./markdown-editor";
@@ -26,10 +26,18 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
   );
   const [showHelp, setShowHelp] = useState(false);
   const [isGeneratingAtomicNotes, setIsGeneratingAtomicNotes] = useState(false);
+  
+  // Text selection and context menu state
+  const [selectedText, setSelectedText] = useState("");
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [isDefiningTerm, setIsDefiningTerm] = useState(false);
+  
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedRef = useRef({ title: note.title, content: note.content });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const helpRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // Undo/Redo functionality
   const [history, setHistory] = useState<string[]>([note.content]);
@@ -667,6 +675,131 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
     setIsGeneratingAtomicNotes(false);
   };
 
+  // Handle text selection for context menu
+  const handleTextSelection = useCallback(() => {
+    const selection = window.getSelection();
+    const selectedText = selection?.toString().trim() || "";
+    
+    // For textarea elements (regular notes, atomic notes, structure notes)
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      
+      if (start !== end) {
+        const textareaSelected = textarea.value.substring(start, end).trim();
+        if (textareaSelected.length > 0) {
+          setSelectedText(textareaSelected);
+          return;
+        }
+      }
+    }
+    
+    // For div elements (hub notes) - use window selection
+    if (selectedText.length > 0) {
+      setSelectedText(selectedText);
+    } else {
+      setSelectedText("");
+      setShowContextMenu(false);
+    }
+  }, []);
+
+  // Handle right-click context menu
+  const handleContextMenu = useCallback((event: React.MouseEvent) => {
+    // Always prevent default context menu initially
+    event.preventDefault();
+    
+    // Check for selected text at the time of right-click
+    let currentSelectedText = "";
+    
+    // For textarea elements
+    if (textareaRef.current) {
+      const textarea = textareaRef.current;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      
+      if (start !== end) {
+        currentSelectedText = textarea.value.substring(start, end).trim();
+      }
+    } else {
+      // For div elements (hub notes) - use window selection
+      const selection = window.getSelection();
+      currentSelectedText = selection?.toString().trim() || "";
+    }
+    
+    // Only show our custom context menu if there's selected text
+    if (currentSelectedText.length > 0) {
+      setSelectedText(currentSelectedText);
+      setContextMenuPosition({ x: event.clientX, y: event.clientY });
+      setShowContextMenu(true);
+    }
+  }, []);
+
+  // Handle defining a term
+  const handleDefineTerm = async () => {
+    if (!selectedText || isDefiningTerm) return;
+
+    // Set loading state immediately for instant feedback
+    // DON'T hide context menu yet - keep it visible to show loading state
+    setIsDefiningTerm(true);
+
+    try {
+      // Get some context around the selected term
+      let textContent = "";
+      let context = "";
+      
+      // For textarea elements (regular notes, atomic notes, structure notes)
+      if (textareaRef.current) {
+        textContent = textareaRef.current.value;
+      } else {
+        // For hub notes and other div-based content
+        textContent = content;
+      }
+      
+      const termIndex = textContent.indexOf(selectedText);
+      if (termIndex !== -1) {
+        const contextStart = Math.max(0, termIndex - 100);
+        const contextEnd = Math.min(textContent.length, termIndex + selectedText.length + 100);
+        context = textContent.substring(contextStart, contextEnd);
+      }
+
+      const definition = await generateTermDefinition(selectedText, context);
+      
+      if (definition && onCreateAtomicNotes) {
+        // Create an atomic note with the definition
+        onCreateAtomicNotes([{
+          title: definition.title,
+          content: definition.content
+        }]);
+      }
+    } catch (error) {
+      console.error("Error defining term:", error);
+    } finally {
+      // Hide context menu and reset state after operation completes
+      setShowContextMenu(false);
+      setIsDefiningTerm(false);
+      setSelectedText("");
+    }
+  };
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contextMenuRef.current && 
+          !contextMenuRef.current.contains(event.target as Node)) {
+        setShowContextMenu(false);
+      }
+    };
+
+    if (showContextMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showContextMenu]);
+
   return (
     <div className="h-full flex flex-col max-w-4xl mx-auto">
       {/* Title Section - Only show for regular notes */}
@@ -758,6 +891,8 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
                     value={content}
                     onChange={handleContentChange}
                     onKeyDown={handleKeyDown}
+                    onSelect={handleTextSelection}
+                    onContextMenu={handleContextMenu}
                     placeholder="Write your atomic note here..."
                     className="w-full resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-[400px] overflow-y-auto placeholder:text-muted-foreground/50 break-words overflow-wrap-anywhere"
                     style={{
@@ -788,9 +923,14 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
               /* Hub Note - Show only description, no content editing */
               <div className="max-w-4xl mx-auto w-full">
                 <div className="p-6 bg-muted/20 rounded-lg border border-border/30">
-                  <p className="text-base text-muted-foreground leading-relaxed break-words overflow-wrap-anywhere">
+                  <div 
+                    className="text-base text-muted-foreground leading-relaxed break-words overflow-wrap-anywhere cursor-text select-text"
+                    onMouseUp={handleTextSelection}
+                    onContextMenu={handleContextMenu}
+                    style={{ userSelect: 'text' }}
+                  >
                     {content}
-                  </p>
+                  </div>
                 </div>
                 
                 {/* Hub Note Manager - Right after description */}
@@ -828,6 +968,9 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
                         }
                       }, 500);
                     }}
+                    onSelect={handleTextSelection}
+                    onContextMenu={handleContextMenu}
+                    textareaRef={textareaRef}
                     placeholder="Write your structure note in markdown..."
                   />
                 </div>
@@ -851,6 +994,8 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
                 value={content}
                 onChange={handleContentChange}
                 onKeyDown={handleKeyDown}
+                onSelect={handleTextSelection}
+                onContextMenu={handleContextMenu}
                 placeholder="Write your note here..."
                 className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 w-full overflow-y-auto break-words overflow-wrap-anywhere"
                 style={{
@@ -979,6 +1124,40 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
           )}
         </div>
       </div>
+
+      {/* Context Menu for defining terms */}
+      {showContextMenu && selectedText && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 bg-background border border-border rounded-lg shadow-xl py-1 min-w-48"
+          style={{
+            left: contextMenuPosition.x,
+            top: contextMenuPosition.y,
+          }}
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`w-full justify-start px-3 py-2 h-auto text-sm font-normal hover:bg-accent transition-all duration-200 ${
+              isDefiningTerm ? 'bg-accent/50 cursor-not-allowed' : ''
+            }`}
+            onClick={handleDefineTerm}
+            disabled={isDefiningTerm}
+          >
+            {isDefiningTerm ? (
+              <>
+                <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full mr-2 flex-shrink-0" />
+                <span className="text-primary font-medium">Defining...</span>
+              </>
+            ) : (
+              <>
+                <BookOpen className="h-4 w-4 mr-2 flex-shrink-0" />
+                <span>Define &quot;{selectedText.length > 20 ? selectedText.substring(0, 20) + "..." : selectedText}&quot;</span>
+              </>
+            )}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

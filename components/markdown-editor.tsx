@@ -10,19 +10,28 @@ interface MarkdownEditorProps {
   value: string;
   onChange: (value: string) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  onSelect?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   placeholder?: string;
   className?: string;
+  textareaRef?: React.RefObject<HTMLTextAreaElement | null>;
 }
 
 export default function MarkdownEditor({
   value,
   onChange,
   onKeyDown,
+  onSelect,
+  onContextMenu,
   placeholder = "Write your markdown here...",
-  className = ""
+  className = "",
+  textareaRef
 }: MarkdownEditorProps) {
   const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  // Use provided ref or fallback to internal ref
+  const activeTextareaRef = textareaRef || internalTextareaRef;
 
   const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onChange(e.target.value);
@@ -57,10 +66,12 @@ export default function MarkdownEditor({
         {/* Edit Mode */}
         {viewMode === 'edit' && (
           <textarea
-            ref={textareaRef}
+            ref={activeTextareaRef}
             value={value}
             onChange={handleChange}
             onKeyDown={onKeyDown}
+            onSelect={onSelect}
+            onContextMenu={onContextMenu}
             placeholder={placeholder}
             className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 w-full overflow-y-auto"
             style={{

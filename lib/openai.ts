@@ -601,3 +601,94 @@ Title:`,
     })}`;
   }
 }
+
+export async function generateTermDefinition(
+  term: string,
+  context?: string
+): Promise<{ title: string; content: string } | null> {
+  if (!term.trim()) {
+    return null;
+  }
+
+  // Check if API key is available
+  if (!process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
+    console.log("OpenAI API key not found, cannot generate definition");
+    return null;
+  }
+
+  try {
+    const contextPrompt = context 
+      ? `The term appears in this context: "${context}"\n\n`
+      : "";
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert at creating clear, concise definitions for terms, concepts, jargon, and technical vocabulary. Your goal is to make complex ideas accessible while maintaining accuracy.
+
+Rules:
+1. Create a short, descriptive title (2-6 words) that captures the essence of the term
+2. Write a clear, self-contained definition that explains what the term means
+3. If it's technical jargon, explain it in plain language
+4. If context is provided, tailor the definition to that specific usage
+5. Keep the definition concise but comprehensive (1-3 sentences)
+6. Make it understandable to someone not familiar with the field
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "title": "Short descriptive title",
+  "content": "Clear, comprehensive definition of the term that stands alone and makes sense to someone unfamiliar with the concept."
+}`
+        },
+        {
+          role: "user",
+          content: `${contextPrompt}Please define this term: "${term}"`
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 300,
+    });
+
+    const result = response.choices[0]?.message?.content?.trim();
+
+    if (!result) {
+      throw new Error("No response generated");
+    }
+
+    // Clean the response - remove markdown code blocks if present
+    let cleanedResult = result;
+    if (cleanedResult.startsWith("```json")) {
+      cleanedResult = cleanedResult
+        .replace(/^```json\s*/, "")
+        .replace(/\s*```$/, "");
+    } else if (cleanedResult.startsWith("```")) {
+      cleanedResult = cleanedResult
+        .replace(/^```\s*/, "")
+        .replace(/\s*```$/, "");
+    }
+
+    // Parse the JSON response
+    let definition: { title: string; content: string };
+    try {
+      definition = JSON.parse(cleanedResult);
+    } catch (parseError) {
+      console.error("Failed to parse OpenAI definition response:", cleanedResult);
+      throw new Error(`Invalid JSON response: ${parseError}`);
+    }
+
+    // Validate the response structure
+    if (!definition.title || !definition.content) {
+      throw new Error("Invalid response format from OpenAI");
+    }
+
+    return {
+      title: definition.title.trim(),
+      content: definition.content.trim()
+    };
+  } catch (error) {
+    console.error("Error generating term definition:", error);
+    return null;
+  }
+}

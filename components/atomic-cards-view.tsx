@@ -1,10 +1,11 @@
 "use client";
 
 import { Note } from "@/lib/types";
-import { useState } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
-import { ArrowLeft, X, Plus, Trash2, Layers } from "lucide-react";
+import { ArrowLeft, X, Plus, Trash2, Layers, BookOpen } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
+import { generateTermDefinition } from "@/lib/openai";
 
 interface AtomicCardsViewProps {
   notes: Note[];
@@ -15,6 +16,7 @@ interface AtomicCardsViewProps {
   onCreateTopic?: (selectedAtomicNotes: Note[]) => Promise<void>;
   onCreateStructuredNote?: (selectedAtomicNotes: Note[]) => void;
   onDeleteNote?: (noteId: string) => void;
+  onCreateAtomicNotes?: (atomicNotes: Array<{ title: string; content: string }>) => void;
 }
 
 interface CardState {
@@ -33,10 +35,20 @@ export default function AtomicCardsView({
   onCreateTopic,
   onCreateStructuredNote,
   onDeleteNote,
+  onCreateAtomicNotes,
 }: AtomicCardsViewProps) {
   const [cardStates, setCardStates] = useState<CardState>({});
   const [isCreatingTopic, setIsCreatingTopic] = useState(false);
   const [isCreatingStructured, setIsCreatingStructured] = useState(false);
+  
+  // Text selection and context menu state
+  const [selectedText, setSelectedText] = useState("");
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [isDefiningTerm, setIsDefiningTerm] = useState(false);
+  const [activeTextareaId, setActiveTextareaId] = useState<string | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const textareaRefs = useRef<{[key: string]: HTMLTextAreaElement | null}>({});
 
   const handleCreateTopic = async () => {
     if (!onCreateTopic || notes.length < 1) return;
@@ -97,6 +109,115 @@ export default function AtomicCardsView({
     });
   };
 
+  // Handle text selection for context menu
+  const handleTextSelection = useCallback((noteId: string) => {
+    const textarea = textareaRefs.current[noteId];
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    
+    if (start !== end) {
+      const selected = textarea.value.substring(start, end).trim();
+      if (selected.length > 0) {
+        setSelectedText(selected);
+        setActiveTextareaId(noteId);
+      } else {
+        setSelectedText("");
+        setShowContextMenu(false);
+        setActiveTextareaId(null);
+      }
+    } else {
+      setSelectedText("");
+      setShowContextMenu(false);
+      setActiveTextareaId(null);
+    }
+  }, []);
+
+  // Handle right-click context menu
+  const handleContextMenu = useCallback((event: React.MouseEvent, noteId: string) => {
+    // Always prevent default context menu initially
+    event.preventDefault();
+    
+    // Check for selected text at the time of right-click
+    const textarea = textareaRefs.current[noteId];
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    
+    if (start !== end) {
+      const currentSelectedText = textarea.value.substring(start, end).trim();
+      
+      // Only show our custom context menu if there's selected text
+      if (currentSelectedText.length > 0) {
+        setSelectedText(currentSelectedText);
+        setActiveTextareaId(noteId);
+        setContextMenuPosition({ x: event.clientX, y: event.clientY });
+        setShowContextMenu(true);
+      }
+    }
+  }, []);
+
+  // Handle defining a term
+  const handleDefineTerm = async () => {
+    if (!selectedText || isDefiningTerm || !activeTextareaId) return;
+
+    // Set loading state immediately for instant feedback
+    // DON'T hide context menu yet - keep it visible to show loading state
+    setIsDefiningTerm(true);
+
+    try {
+      // Get context from the active textarea
+      const textarea = textareaRefs.current[activeTextareaId];
+      const textContent = textarea?.value || "";
+      
+      let context = "";
+      const termIndex = textContent.indexOf(selectedText);
+      if (termIndex !== -1) {
+        const contextStart = Math.max(0, termIndex - 100);
+        const contextEnd = Math.min(textContent.length, termIndex + selectedText.length + 100);
+        context = textContent.substring(contextStart, contextEnd);
+      }
+
+      const definition = await generateTermDefinition(selectedText, context);
+      
+      if (definition && onCreateAtomicNotes) {
+        // Create an atomic note with the definition
+        onCreateAtomicNotes([{
+          title: definition.title,
+          content: definition.content
+        }]);
+      }
+    } catch (error) {
+      console.error("Error defining term:", error);
+    } finally {
+      // Hide context menu and reset state after operation completes
+      setShowContextMenu(false);
+      setIsDefiningTerm(false);
+      setSelectedText("");
+      setActiveTextareaId(null);
+    }
+  };
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contextMenuRef.current && 
+          !contextMenuRef.current.contains(event.target as Node)) {
+        setShowContextMenu(false);
+      }
+    };
+
+    if (showContextMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showContextMenu]);
+
   const renderCard = (note: Note) => {
     const content = getCardContent(note);
     const unsaved = hasUnsavedChanges(note);
@@ -144,8 +265,13 @@ export default function AtomicCardsView({
         {/* Card Content */}
         <div className="p-5">
           <textarea
+            ref={(el) => {
+              textareaRefs.current[note.id] = el;
+            }}
             value={content}
             onChange={(e) => updateCardContent(note.id, e.target.value)}
+            onSelect={() => handleTextSelection(note.id)}
+            onContextMenu={(e) => handleContextMenu(e, note.id)}
             placeholder="Write your atomic note here..."
             className="w-full h-48 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-sm leading-relaxed shadow-none rounded-none outline-none overflow-y-auto placeholder:text-muted-foreground/40 selection:bg-primary/20 break-words overflow-wrap-anywhere"
             style={{
@@ -292,6 +418,40 @@ export default function AtomicCardsView({
               )}
             </Button>
           )}
+        </div>
+      )}
+
+      {/* Context Menu for defining terms */}
+      {showContextMenu && selectedText && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 bg-background border border-border rounded-lg shadow-xl py-1 min-w-48"
+          style={{
+            left: contextMenuPosition.x,
+            top: contextMenuPosition.y,
+          }}
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`w-full justify-start px-3 py-2 h-auto text-sm font-normal hover:bg-accent transition-all duration-200 ${
+              isDefiningTerm ? 'bg-accent/50 cursor-not-allowed' : ''
+            }`}
+            onClick={handleDefineTerm}
+            disabled={isDefiningTerm}
+          >
+            {isDefiningTerm ? (
+              <>
+                <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full mr-2 flex-shrink-0" />
+                <span className="text-primary font-medium">Defining...</span>
+              </>
+            ) : (
+              <>
+                <BookOpen className="h-4 w-4 mr-2 flex-shrink-0" />
+                <span>Define &quot;{selectedText.length > 20 ? selectedText.substring(0, 20) + "..." : selectedText}&quot;</span>
+              </>
+            )}
+          </Button>
         </div>
       )}
     </div>
