@@ -11,6 +11,11 @@ export interface AtomicNote {
   content: string;
 }
 
+// Interface for OpenAI response items
+interface OpenAIAtomicNoteResponse {
+  content: string;
+}
+
 export interface TrainOfThought {
   theme: string;
   description: string;
@@ -30,17 +35,22 @@ export interface HubNoteAnalysis {
 export async function generateAtomicNotes(
   sourceContent: string
 ): Promise<AtomicNote[]> {
+  console.log("generateAtomicNotes called with content length:", sourceContent.length);
+  
   if (!sourceContent.trim()) {
+    console.log("Empty content provided, returning empty array");
     return [];
   }
 
   // Check if API key is available
   if (!process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
-    console.warn(
-      "OpenAI API key not found, falling back to regex-based splitting"
-    );
-    return fallbackSplitIntoAtomicNotes(sourceContent);
+    console.log("OpenAI API key not found, falling back to regex-based splitting");
+    const fallbackResult = fallbackSplitIntoAtomicNotes(sourceContent);
+    console.log("Fallback produced", fallbackResult.length, "atomic notes");
+    return fallbackResult;
   }
+
+  console.log("Using OpenAI API to generate atomic notes");
 
   try {
     const response = await openai.chat.completions.create({
@@ -54,8 +64,8 @@ General Rules:
 1. Each atomic note = 1 big idea, quote, or insight.
 2. Make each note self-contained — it must make sense on its own.
 3. Use clear, concise language, but preserve depth and nuance.
-4. Don’t over-split concepts into overly granular fragments.
-5. Return 1–8 atomic notes depending on the input’s complexity and richness.
+4. Don't over-split concepts into overly granular fragments.
+5. Return 1–8 atomic notes depending on the input's complexity and richness.
 
 Special Rules for Literary or Poetic Input:
 1. If the text is emotional, poetic, or ambiguous, prioritize preserving standout quotes or phrases as atomic notes.
@@ -63,7 +73,7 @@ Special Rules for Literary or Poetic Input:
 3. Avoid flattening poetic language into generic summaries — preserve tone and voice when the expression is meaningful.
 4. If a line has layered meaning, you can capture each interpretation as its own atomic note (up to 2–3 max).
 
-IMPORTANT: Return ONLY a valid JSON array of objects with the content field. Do not wrap in markdown code blocks or add any other text. The content should be a complete, self-contained explanation of the idea.
+IMPORTANT: Return ONLY a valid JSON array of objects with a "content" field. Do not wrap in markdown code blocks or add any other text. The content should be a complete, self-contained explanation of the idea.
 
 Example format:
 [
@@ -80,6 +90,8 @@ Example format:
       temperature: 0.3, // Lower temperature for more consistent, focused output
       max_tokens: 2000,
     });
+
+    console.log("OpenAI API response received");
 
     const result = response.choices[0]?.message?.content;
     if (!result) {
@@ -98,34 +110,51 @@ Example format:
         .replace(/\s*```$/, "");
     }
 
+    console.log("Cleaned OpenAI response:", cleanedResult);
+
     // Parse the JSON response
-    let atomicNotes: AtomicNote[];
+    let rawResponse: OpenAIAtomicNoteResponse[];
     try {
-      atomicNotes = JSON.parse(cleanedResult) as AtomicNote[];
+      rawResponse = JSON.parse(cleanedResult) as OpenAIAtomicNoteResponse[];
     } catch (parseError) {
       console.error("Failed to parse OpenAI response as JSON:", cleanedResult);
       throw new Error(`Invalid JSON response from OpenAI: ${parseError}`);
     }
 
     // Validate the response structure
-    if (!Array.isArray(atomicNotes)) {
+    if (!Array.isArray(rawResponse)) {
       throw new Error("Invalid response format from OpenAI");
     }
 
-    // Filter out any invalid notes and ensure they have both title and content
-    return atomicNotes.filter(
-      (note) =>
-        note &&
-        typeof note.title === "string" &&
-        typeof note.content === "string" &&
-        note.title.trim().length > 0 &&
-        note.content.trim().length > 0
-    );
+    console.log("Parsed OpenAI response, processing", rawResponse.length, "items");
+
+    // Convert to AtomicNote format (adding empty title since the interface requires it)
+    const atomicNotes: AtomicNote[] = rawResponse
+      .map((item) => {
+        if (!item || typeof item !== 'object' || !item.content) {
+          return null;
+        }
+
+        return {
+          title: "", // Empty title since we don't use it in the UI
+          content: item.content.trim()
+        };
+      })
+      .filter((note): note is AtomicNote => 
+        note !== null && 
+        note.content.length > 0
+      );
+
+    console.log("OpenAI API produced", atomicNotes.length, "valid atomic notes");
+    return atomicNotes;
   } catch (error) {
     console.error("Error generating atomic notes:", error);
 
     // Fallback to the original regex-based splitting if OpenAI fails
-    return fallbackSplitIntoAtomicNotes(sourceContent);
+    console.log("Falling back to regex-based splitting due to error");
+    const fallbackResult = fallbackSplitIntoAtomicNotes(sourceContent);
+    console.log("Fallback produced", fallbackResult.length, "atomic notes");
+    return fallbackResult;
   }
 }
 
@@ -166,14 +195,14 @@ function fallbackSplitIntoAtomicNotes(content: string): AtomicNote[] {
               const trimmed = sentence.trim();
               if (trimmed) {
                 sections.push({
-                  title: "", // No title for atomic notes
+                  title: "",
                   content: trimmed,
                 });
               }
             });
           } else {
             sections.push({
-              title: "", // No title for atomic notes
+              title: "",
               content: subsection,
             });
           }
@@ -201,7 +230,7 @@ function fallbackSplitIntoAtomicNotes(content: string): AtomicNote[] {
             if (!itemTrimmed) return;
 
             sections.push({
-              title: "", // No title for atomic notes
+              title: "",
               content: itemTrimmed,
             });
           });
@@ -216,7 +245,7 @@ function fallbackSplitIntoAtomicNotes(content: string): AtomicNote[] {
               const sentenceTrimmed = sentence.trim();
               if (sentenceTrimmed) {
                 sections.push({
-                  title: "", // No title for atomic notes
+                  title: "",
                   content:
                     sentenceTrimmed +
                     (sentenceTrimmed.match(/[.!?]$/) ? "" : "."),
@@ -226,14 +255,14 @@ function fallbackSplitIntoAtomicNotes(content: string): AtomicNote[] {
           } else {
             // Single long sentence or paragraph
             sections.push({
-              title: "", // No title for atomic notes
+              title: "",
               content: trimmed,
             });
           }
         } else {
           // Regular paragraph - keep as atomic unit
           sections.push({
-            title: "", // No title for atomic notes
+            title: "",
             content: trimmed,
           });
         }
@@ -252,7 +281,7 @@ function fallbackSplitIntoAtomicNotes(content: string): AtomicNote[] {
         const trimmed = sentence.trim();
         if (trimmed) {
           sections.push({
-            title: "", // No title for atomic notes
+            title: "",
             content: trimmed + (trimmed.match(/[.!?]$/) ? "" : "."),
           });
         }
@@ -260,7 +289,7 @@ function fallbackSplitIntoAtomicNotes(content: string): AtomicNote[] {
     } else {
       // Even single content should become an atomic note
       sections.push({
-        title: "", // No title for atomic notes
+        title: "",
         content: content.trim(),
       });
     }

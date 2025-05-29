@@ -644,12 +644,24 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
   const handleCreateAtomicNotes = async () => {
     if (isGeneratingAtomicNotes) return;
 
+    console.log("Create Atomic Notes button clicked");
+    console.log("Content length:", content.length);
+    console.log("Content preview:", content.substring(0, 100) + "...");
+
     setIsGeneratingAtomicNotes(true);
 
-    const atomicNotes = await generateAtomicNotes(content);
-    
-    if (onCreateAtomicNotes && atomicNotes.length > 0) {
-      onCreateAtomicNotes(atomicNotes);
+    try {
+      const atomicNotes = await generateAtomicNotes(content);
+      console.log("Generated atomic notes:", atomicNotes);
+      
+      if (onCreateAtomicNotes && atomicNotes.length > 0) {
+        console.log("Calling onCreateAtomicNotes with", atomicNotes.length, "notes");
+        onCreateAtomicNotes(atomicNotes);
+      } else {
+        console.log("No atomic notes generated or no callback function");
+      }
+    } catch (error) {
+      console.error("Error in handleCreateAtomicNotes:", error);
     }
 
     setIsGeneratingAtomicNotes(false);
