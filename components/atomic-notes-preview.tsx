@@ -3,13 +3,6 @@
 import { useState } from "react";
 import { Button } from "./ui/button";
 import { Check, X, FileText, Zap, Edit3, Eye, EyeOff } from "lucide-react";
-import { ScrollArea } from "./ui/scroll-area";
-
-interface AtomicNote {
-  title: string;
-  content: string;
-  id: string; // temporary ID for preview
-}
 
 interface AtomicNotesPreviewProps {
   potentialNotes: Array<{ title: string; content: string }>;
@@ -221,7 +214,7 @@ export default function AtomicNotesPreview({
             </h2>
           </div>
           <p className="text-sm text-muted-foreground">
-            Review, edit, and select which atomic notes to create from "{sourceNoteTitle}"
+            Review, edit, and select which atomic notes to create from &quot;{sourceNoteTitle}&quot;
           </p>
           
           {/* Controls */}

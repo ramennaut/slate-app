@@ -8,12 +8,11 @@ import {
   FileText,
   PanelLeftClose,
   PanelLeftOpen,
-  File,
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 interface NotesSidebarProps {
   notes: Note[];
@@ -36,8 +35,6 @@ export default function NotesSidebar({
   toggleSidebar,
   isMobile,
 }: NotesSidebarProps) {
-  const activeNote = notes.find((note) => note.id === activeNoteId);
-  
   // State for active tab
   const [activeTab, setActiveTab] = useState<'notes' | 'hub'>('notes');
   
