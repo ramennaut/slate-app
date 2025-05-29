@@ -12,13 +12,14 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
-import { useState } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 interface NotesSidebarProps {
   notes: Note[];
   onSelectNote: (note: Note) => void;
   createNewNote: () => void;
   onDeleteNote: (id: string) => void;
+  onDeleteMultipleNotes?: (ids: string[]) => void;
   activeNoteId?: string;
   isCollapsed: boolean;
   toggleSidebar: () => void;
@@ -30,6 +31,7 @@ export default function NotesSidebar({
   onSelectNote,
   createNewNote,
   onDeleteNote,
+  onDeleteMultipleNotes,
   activeNoteId,
   isCollapsed,
   toggleSidebar,
@@ -41,6 +43,13 @@ export default function NotesSidebar({
   // State for collapsed sections within tabs
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   
+  // State for multi-selection
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+  const [lastClickedId, setLastClickedId] = useState<string | null>(null);
+  
+  // Ref for sidebar container to detect outside clicks
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  
   // Separate notes into categories
   const sourceNotes = notes.filter(note => !note.isAtomic && !note.isSummary && note.noteType !== 'structured');
   const atomicNotes = notes.filter(note => note.isAtomic);
@@ -49,6 +58,121 @@ export default function NotesSidebar({
 
   // Find the currently selected note (could be source, atomic, or hub)
   const selectedNote = notes.find(note => note.id === activeNoteId);
+
+  // Handle clicking in empty areas to clear selection
+  const handleSidebarClick = useCallback((event: React.MouseEvent) => {
+    // Only clear selection if clicking without modifier keys
+    if (!event.metaKey && !event.ctrlKey && !event.shiftKey) {
+      // Check if we're clicking in an empty area (not on a note)
+      const target = event.target as HTMLElement;
+      const isNoteClick = target.closest('[data-note-item="true"]');
+      
+      if (!isNoteClick && selectedNoteIds.size > 0) {
+        setSelectedNoteIds(new Set());
+        setLastClickedId(null);
+      }
+    }
+  }, [selectedNoteIds]);
+
+  // Handle multi-selection click
+  const handleNoteClick = useCallback((note: Note, event: React.MouseEvent) => {
+    // Always stop propagation to prevent sidebar click handler
+    event.stopPropagation();
+    
+    if (event.metaKey || event.ctrlKey || event.shiftKey) {
+      // Prevent text selection during multi-select operations
+      event.preventDefault();
+    }
+    
+    if (event.metaKey || event.ctrlKey) {
+      // Cmd/Ctrl + click: toggle selection
+      const newSelected = new Set(selectedNoteIds);
+      if (newSelected.has(note.id)) {
+        newSelected.delete(note.id);
+      } else {
+        newSelected.add(note.id);
+      }
+      setSelectedNoteIds(newSelected);
+      setLastClickedId(note.id);
+      // Don't call onSelectNote for multi-select operations
+    } else if (event.shiftKey && lastClickedId) {
+      // Shift + click: select range
+      const allNoteIds = notes.map(n => n.id);
+      const lastIndex = allNoteIds.indexOf(lastClickedId);
+      const currentIndex = allNoteIds.indexOf(note.id);
+      
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        const start = Math.min(lastIndex, currentIndex);
+        const end = Math.max(lastIndex, currentIndex);
+        const rangeIds = allNoteIds.slice(start, end + 1);
+        
+        const newSelected = new Set(selectedNoteIds);
+        rangeIds.forEach(id => newSelected.add(id));
+        setSelectedNoteIds(newSelected);
+      }
+      // Don't call onSelectNote for multi-select operations
+    } else {
+      // Regular click: ALWAYS clear selection and select note
+      setSelectedNoteIds(new Set());
+      setLastClickedId(note.id);
+      onSelectNote(note);
+    }
+  }, [selectedNoteIds, lastClickedId, notes, onSelectNote]);
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Delete/Backspace with Cmd/Ctrl or Shift for batch delete
+      if ((event.key === 'Delete' || event.key === 'Backspace') && 
+          (event.metaKey || event.ctrlKey || event.shiftKey) && 
+          selectedNoteIds.size > 0) {
+        event.preventDefault();
+        
+        if (onDeleteMultipleNotes) {
+          onDeleteMultipleNotes(Array.from(selectedNoteIds));
+        } else {
+          // Fallback: delete one by one
+          selectedNoteIds.forEach(id => onDeleteNote(id));
+        }
+        setSelectedNoteIds(new Set());
+        setLastClickedId(null);
+      }
+      
+      // Escape to clear selection
+      if (event.key === 'Escape') {
+        setSelectedNoteIds(new Set());
+        setLastClickedId(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedNoteIds, onDeleteNote, onDeleteMultipleNotes]);
+
+  // Handle clicks outside sidebar to clear selection
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      // Only clear selection if we have selected notes and the click is outside the sidebar
+      if (selectedNoteIds.size > 0 && 
+          sidebarRef.current && 
+          !sidebarRef.current.contains(event.target as Node)) {
+        setSelectedNoteIds(new Set());
+        setLastClickedId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [selectedNoteIds]);
+
+  // Clear selection when active note changes (but not when selection size changes)
+  useEffect(() => {
+    if (activeNoteId && selectedNoteIds.size > 0) {
+      setSelectedNoteIds(new Set());
+      setLastClickedId(null);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeNoteId]); // Only fire when activeNoteId changes, not when selection size changes
 
   const toggleSection = (sectionName: string) => {
     const newCollapsed = new Set(collapsedSections);
@@ -62,15 +186,25 @@ export default function NotesSidebar({
 
   const renderNoteItem = (note: Note, isSubNote = false) => {
     const isActive = activeNoteId === note.id;
+    const isSelected = selectedNoteIds.has(note.id);
     const isAtomic = note.isAtomic;
     const isHubNote = note.isSummary;
 
     return (
       <div
         key={note.id}
-        onClick={() => onSelectNote(note)}
-        className={`group relative block rounded-lg cursor-pointer transition-all duration-200 overflow-hidden border ${
-          isActive
+        data-note-item="true"
+        onClick={(event) => handleNoteClick(note, event)}
+        onMouseDown={(event) => {
+          // Prevent text selection during multi-select operations
+          if (event.metaKey || event.ctrlKey || event.shiftKey) {
+            event.preventDefault();
+          }
+        }}
+        className={`group relative block rounded-lg cursor-pointer transition-all duration-200 overflow-hidden border select-none ${
+          isSelected
+            ? "bg-blue-500/5 border-blue-500/20 ring-1 ring-blue-500/10"
+            : isActive
             ? "bg-gradient-to-br from-sidebar-primary/10 to-sidebar-primary/5 border-sidebar-primary/20 shadow-sm ring-1 ring-sidebar-primary/10"
             : "bg-white/20 dark:bg-white/3 border-sidebar-border/20 hover:border-sidebar-primary/15 hover:bg-sidebar-accent/40"
         } ${
@@ -81,8 +215,10 @@ export default function NotesSidebar({
           (isAtomic || isHubNote) ? "p-1.5" : "p-2"
         }`}
       >
-        {isActive && !isCollapsed && (
-          <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-sidebar-primary" />
+        {(isActive || isSelected) && !isCollapsed && (
+          <div className={`absolute left-0 top-0 bottom-0 w-0.5 ${
+            isSelected ? "bg-blue-500" : "bg-sidebar-primary"
+          }`} />
         )}
 
         <div
@@ -136,7 +272,9 @@ export default function NotesSidebar({
 
   return (
     <div
+      ref={sidebarRef}
       className={`flex flex-col h-full bg-sidebar border-r border-sidebar-border overflow-hidden w-full`}
+      onClick={handleSidebarClick}
     >
       <div className="flex items-center justify-between px-3 py-3 border-b border-sidebar-border/30 bg-sidebar flex-shrink-0 min-h-0">
         <div
@@ -145,7 +283,7 @@ export default function NotesSidebar({
           }`}
         >
           <h2 className="text-sm font-semibold text-sidebar-foreground/80 truncate">
-            All Notes
+            {selectedNoteIds.size > 0 ? `${selectedNoteIds.size} Selected` : "All Notes"}
           </h2>
           <span className="text-xs text-sidebar-foreground/50 bg-sidebar-accent px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 min-w-0">
             {notes.length}
@@ -169,32 +307,59 @@ export default function NotesSidebar({
               <Plus className="h-3.5 w-3.5" />
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className={`h-7 w-7 rounded-md transition-all duration-200 flex-shrink-0 ${
-              isCollapsed ? "hidden" : ""
-            } ${
-              selectedNote
-                ? "text-sidebar-foreground/70 hover:text-destructive hover:bg-destructive/10"
-                : "text-sidebar-foreground/40 cursor-not-allowed"
-            }`}
-            onClick={() => selectedNote && onDeleteNote(selectedNote.id)}
-            disabled={!selectedNote}
-            title={
-              selectedNote
-                ? selectedNote.isAtomic 
-                  ? `Delete atomic note: "${selectedNote.content.slice(0, 30)}${selectedNote.content.length > 30 ? '...' : ''}"`
-                  : selectedNote.isSummary
-                    ? `Delete hub note: "${selectedNote.title}"`
-                    : selectedNote.noteType === 'structured'
-                      ? `Delete structure note: "${selectedNote.title}"`
-                      : `Delete "${selectedNote.title || "Untitled Note"}"`
-                : "No note selected"
-            }
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          {selectedNoteIds.size > 0 ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-7 w-7 rounded-md transition-all duration-200 flex-shrink-0 text-destructive hover:bg-destructive/10 ${
+                isCollapsed ? "hidden" : ""
+              }`}
+              onClick={() => {
+                if (onDeleteMultipleNotes) {
+                  onDeleteMultipleNotes(Array.from(selectedNoteIds));
+                } else {
+                  selectedNoteIds.forEach(id => onDeleteNote(id));
+                }
+                setSelectedNoteIds(new Set());
+                setLastClickedId(null);
+              }}
+              title={`Delete ${selectedNoteIds.size} selected notes`}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`h-7 w-7 rounded-md transition-all duration-200 flex-shrink-0 ${
+                isCollapsed ? "hidden" : ""
+              } ${
+                selectedNote
+                  ? "text-sidebar-foreground/70 hover:text-destructive hover:bg-destructive/10"
+                  : "text-sidebar-foreground/40 cursor-not-allowed"
+              }`}
+              onClick={(event) => {
+                event.preventDefault();
+                if (selectedNote) {
+                  onDeleteNote(selectedNote.id);
+                }
+              }}
+              disabled={!selectedNote}
+              title={
+                selectedNote
+                  ? selectedNote.isAtomic 
+                    ? `Delete atomic note: "${selectedNote.content.slice(0, 30)}${selectedNote.content.length > 30 ? '...' : ''}"`
+                    : selectedNote.isSummary
+                      ? `Delete hub note: "${selectedNote.title}"`
+                      : selectedNote.noteType === 'structured'
+                        ? `Delete structure note: "${selectedNote.title}"`
+                        : `Delete "${selectedNote.title || "Untitled Note"}"`
+                  : "No note selected"
+              }
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
           {!isMobile && (
             <Button
               variant="ghost"
@@ -311,33 +476,56 @@ export default function NotesSidebar({
                       </div>
                       {!collapsedSections.has('atomic') && (
                         <div className="space-y-0">
-                          {atomicNotes.map(note => (
-                            <div
-                              key={note.id}
-                              onClick={() => onSelectNote(note)}
-                              className={`group relative flex items-center gap-2 rounded cursor-pointer transition-all duration-200 overflow-hidden border px-1 py-1 ${
-                                activeNoteId === note.id
-                                  ? "bg-gradient-to-br from-sidebar-primary/10 to-sidebar-primary/5 border-sidebar-primary/20 shadow-sm ring-1 ring-sidebar-primary/10"
-                                  : "bg-transparent border-transparent hover:border-sidebar-primary/15 hover:bg-sidebar-accent/40"
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-2 min-w-0 flex-1">
-                                <p className={`text-xs line-clamp-1 flex-1 ${
-                                  activeNoteId === note.id
-                                    ? "text-sidebar-primary/90"
-                                    : "text-sidebar-foreground/75 group-hover:text-sidebar-foreground"
-                                }`}>
-                                  {note.content}
-                                </p>
-                                <span className="text-xs text-sidebar-foreground/30 font-mono flex-shrink-0">
-                                  {new Date(note.createdAt).toLocaleDateString('en-US', { 
-                                    month: 'short', 
-                                    day: 'numeric' 
-                                  })}
-                                </span>
+                          {atomicNotes.map(note => {
+                            const isActive = activeNoteId === note.id;
+                            const isSelected = selectedNoteIds.has(note.id);
+                            
+                            return (
+                              <div
+                                key={note.id}
+                                data-note-item="true"
+                                onClick={(event) => handleNoteClick(note, event)}
+                                onMouseDown={(event) => {
+                                  // Prevent text selection during multi-select operations
+                                  if (event.metaKey || event.ctrlKey || event.shiftKey) {
+                                    event.preventDefault();
+                                  }
+                                }}
+                                className={`group relative flex items-center gap-2 rounded cursor-pointer transition-all duration-200 overflow-hidden border px-1 py-1 select-none ${
+                                  isSelected
+                                    ? "bg-blue-500/5 border-blue-500/20 ring-1 ring-blue-500/10"
+                                    : isActive
+                                    ? "bg-gradient-to-br from-sidebar-primary/10 to-sidebar-primary/5 border-sidebar-primary/20 shadow-sm ring-1 ring-sidebar-primary/10"
+                                    : "bg-transparent border-transparent hover:border-sidebar-primary/15 hover:bg-sidebar-accent/40"
+                                }`}
+                              >
+                                {/* Selection indicator */}
+                                {(isActive || isSelected) && (
+                                  <div className={`absolute left-0 top-0 bottom-0 w-0.5 ${
+                                    isSelected ? "bg-blue-500" : "bg-sidebar-primary"
+                                  }`} />
+                                )}
+
+                                <div className="flex items-center justify-between gap-2 min-w-0 flex-1">
+                                  <p className={`text-xs line-clamp-1 flex-1 ${
+                                    isSelected
+                                      ? "text-blue-600/80 dark:text-blue-400/80"
+                                      : isActive
+                                      ? "text-sidebar-primary/90"
+                                      : "text-sidebar-foreground/75 group-hover:text-sidebar-foreground"
+                                  }`}>
+                                    {note.content}
+                                  </p>
+                                  <span className="text-xs text-sidebar-foreground/30 font-mono flex-shrink-0">
+                                    {new Date(note.createdAt).toLocaleDateString('en-US', { 
+                                      month: 'short', 
+                                      day: 'numeric' 
+                                    })}
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>

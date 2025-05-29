@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Plus, Link, Unlink, Search } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
+import { generateHubNoteContent } from "@/lib/openai";
 
 interface HubNoteManagerProps {
   hubNote: Note;
@@ -21,6 +22,7 @@ export default function HubNoteManager({
 }: HubNoteManagerProps) {
   const [showAddNotes, setShowAddNotes] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isUpdatingHub, setIsUpdatingHub] = useState(false);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   
@@ -60,21 +62,46 @@ export default function HubNoteManager({
     };
   }, [showAddNotes]);
 
-  const addAtomicNote = (atomicNote: Note) => {
+  const addAtomicNote = async (atomicNote: Note) => {
     const newLinkedIds = [...linkedAtomicNoteIds, atomicNote.id];
+    const newLinkedNotes = allAtomicNotes.filter(note => 
+      newLinkedIds.includes(note.id)
+    );
 
-    // Keep the existing description since hub notes only have a 1-liner
-    const updatedHubNote: Note = {
-      ...hubNote,
-      linkedAtomicNoteIds: newLinkedIds,
-    };
+    setIsUpdatingHub(true);
 
-    onUpdateHubNote(updatedHubNote);
-    setShowAddNotes(false);
-    setSearchQuery("");
+    try {
+      // Generate new hub content based on the updated list of atomic notes
+      const hubContent = await generateHubNoteContent(
+        newLinkedNotes.map(note => ({ content: note.content }))
+      );
+
+      const updatedHubNote: Note = {
+        ...hubNote,
+        title: hubContent.title,
+        content: hubContent.description,
+        linkedAtomicNoteIds: newLinkedIds,
+        hubTheme: hubContent.title,
+      };
+
+      onUpdateHubNote(updatedHubNote);
+    } catch (error) {
+      console.error("Error regenerating hub note content:", error);
+      
+      // Fallback: just add the note without regenerating content
+      const updatedHubNote: Note = {
+        ...hubNote,
+        linkedAtomicNoteIds: newLinkedIds,
+      };
+      onUpdateHubNote(updatedHubNote);
+    } finally {
+      setIsUpdatingHub(false);
+      setShowAddNotes(false);
+      setSearchQuery("");
+    }
   };
 
-  const removeAtomicNote = (atomicNoteId: string) => {
+  const removeAtomicNote = async (atomicNoteId: string) => {
     const newLinkedIds = linkedAtomicNoteIds.filter(id => id !== atomicNoteId);
     
     if (newLinkedIds.length < 2) {
@@ -82,18 +109,44 @@ export default function HubNoteManager({
       return;
     }
 
-    // Keep the existing description since hub notes only have a 1-liner
-    const updatedHubNote: Note = {
-      ...hubNote,
-      linkedAtomicNoteIds: newLinkedIds,
-    };
+    const newLinkedNotes = allAtomicNotes.filter(note => 
+      newLinkedIds.includes(note.id)
+    );
 
-    onUpdateHubNote(updatedHubNote);
+    setIsUpdatingHub(true);
+
+    try {
+      // Generate new hub content based on the updated list of atomic notes
+      const hubContent = await generateHubNoteContent(
+        newLinkedNotes.map(note => ({ content: note.content }))
+      );
+
+      const updatedHubNote: Note = {
+        ...hubNote,
+        title: hubContent.title,
+        content: hubContent.description,
+        linkedAtomicNoteIds: newLinkedIds,
+        hubTheme: hubContent.title,
+      };
+
+      onUpdateHubNote(updatedHubNote);
+    } catch (error) {
+      console.error("Error regenerating hub note content:", error);
+      
+      // Fallback: just remove the note without regenerating content
+      const updatedHubNote: Note = {
+        ...hubNote,
+        linkedAtomicNoteIds: newLinkedIds,
+      };
+      onUpdateHubNote(updatedHubNote);
+    } finally {
+      setIsUpdatingHub(false);
+    }
   };
 
   const getPreviewText = (content: string) => {
-    // Use a more generous length for previews, with minimum of 40 characters
-    const maxLength = Math.max(120, 40);
+    // Use much longer length for the wide search interface
+    const maxLength = 180;
     return content.trim().substring(0, maxLength).replace(/\n/g, ' ') + (content.length > maxLength ? '...' : '');
   };
 
@@ -103,6 +156,9 @@ export default function HubNoteManager({
         <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
           <Link className="h-4 w-4" />
           Linked Atomic Notes ({linkedNotes.length})
+          {isUpdatingHub && (
+            <div className="animate-spin h-3 w-3 border-2 border-primary border-t-transparent rounded-full ml-2" />
+          )}
         </h3>
         <div className="relative">
           <Button
@@ -111,6 +167,7 @@ export default function HubNoteManager({
             variant="outline"
             className="h-7 px-2 text-xs"
             ref={addButtonRef}
+            disabled={isUpdatingHub}
           >
             <Plus className="h-3 w-3 mr-1" />
             Add Note
@@ -120,50 +177,59 @@ export default function HubNoteManager({
           {showAddNotes && (
             <div 
               ref={popoverRef}
-              className="absolute top-full right-0 mt-2 w-80 border border-border/30 rounded-lg p-3 bg-background shadow-lg z-50"
+              className="absolute top-full right-0 mt-2 w-[500px] border border-border rounded-lg p-4 bg-background shadow-xl z-50"
+              style={{
+                maxHeight: 'calc(100vh - 150px)',
+              }}
             >
-              <h4 className="text-xs font-medium text-muted-foreground mb-3">
-                Search Atomic Notes
+              <h4 className="text-sm font-medium text-foreground mb-3">
+                Add Atomic Note
               </h4>
               
               {/* Search Bar */}
               <div className="relative mb-3">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground/50" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Search notes by content..."
+                  placeholder="Search notes..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 text-sm border border-border/30 rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30"
+                  className="w-full pl-10 pr-4 py-2.5 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
                   autoFocus
                 />
               </div>
               
               {/* Search Results */}
-              {searchQuery.trim() && (
-                <ScrollArea className="max-h-32">
-                  <div className="space-y-1">
-                    {filteredAvailableNotes.map(note => (
-                      <button
-                        key={note.id}
-                        onClick={() => addAtomicNote(note)}
-                        className="w-full text-left p-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded transition-colors"
-                      >
-                        {getPreviewText(note.content)}
-                      </button>
-                    ))}
-                    {filteredAvailableNotes.length === 0 && (
-                      <div className="text-xs text-muted-foreground/60 text-center py-2">
+              {searchQuery.trim() ? (
+                <ScrollArea className="h-60">
+                  <div className="space-y-2">
+                    {filteredAvailableNotes.length > 0 ? (
+                      filteredAvailableNotes.map(note => (
+                        <button
+                          key={note.id}
+                          onClick={() => addAtomicNote(note)}
+                          className="w-full text-left p-3 text-sm text-foreground bg-background hover:bg-accent rounded-md transition-colors border border-transparent hover:border-border"
+                        >
+                          <div className="line-clamp-2 break-words leading-relaxed">
+                            {getPreviewText(note.content)}
+                          </div>
+                          {note.globalNumber && (
+                            <div className="text-xs text-muted-foreground mt-2 font-medium">
+                              AN-{note.globalNumber}
+                            </div>
+                          )}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="text-sm text-muted-foreground text-center py-4">
                         No notes found matching &quot;{searchQuery}&quot;
                       </div>
                     )}
                   </div>
                 </ScrollArea>
-              )}
-              
-              {!searchQuery.trim() && (
-                <div className="text-xs text-muted-foreground/60 text-center py-2">
-                  Start typing to search for atomic notes...
+              ) : (
+                <div className="text-sm text-muted-foreground text-center py-4">
+                  Start typing to search for atomic notes
                 </div>
               )}
             </div>
@@ -176,20 +242,25 @@ export default function HubNoteManager({
         {linkedNotes.map(note => (
           <div
             key={note.id}
-            className="flex items-center justify-between p-2 bg-muted/30 rounded-lg border border-border/20"
+            className="flex items-start justify-between p-3 bg-muted/30 rounded-lg border border-border/20"
           >
             <button
               onClick={() => onSelectNote(note)}
-              className="flex-1 text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="flex-1 text-left text-sm text-muted-foreground hover:text-foreground transition-colors break-words overflow-wrap-anywhere leading-relaxed"
             >
-              {getPreviewText(note.content)}
+              {note.content}
+              {note.globalNumber && (
+                <div className="text-xs text-muted-foreground mt-2 font-medium">
+                  AN-{note.globalNumber}
+                </div>
+              )}
             </button>
             <Button
               onClick={() => removeAtomicNote(note.id)}
               size="sm"
               variant="ghost"
-              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-2"
-              disabled={linkedNotes.length <= 2}
+              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-3 mt-1 flex-shrink-0"
+              disabled={linkedNotes.length <= 2 || isUpdatingHub}
               title={linkedNotes.length <= 2 ? "Hub notes must have at least 2 linked notes" : "Remove from hub note"}
             >
               <Unlink className="h-3 w-3" />

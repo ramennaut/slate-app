@@ -132,27 +132,31 @@ export default function Home() {
   };
 
   const deleteNote = (id: string) => {
-    const noteToDelete = notes.find(note => note.id === id);
-    const noteIndex = notes.findIndex(note => note.id === id);
-    const updatedNotes = notes.filter((note) => note.id !== id);
-    setNotes(updatedNotes);
+    setNotes(notes.filter(note => note.id !== id));
     
-    // If deleting an atomic note, also remove it from the open cards
-    if (noteToDelete?.isAtomic) {
-      setOpenAtomicNotes(prev => prev.filter(note => note.id !== id));
-    }
-    
-    // Handle active note logic
+    // If this was the active note, clear it and any open atomic cards
     if (activeNote && activeNote.id === id) {
-      // Auto-select the next note for continuous deletion
-      if (updatedNotes.length > 0) {
-        // Try to select the note at the same index, or the previous one if we deleted the last note
-        const nextIndex = noteIndex < updatedNotes.length ? noteIndex : updatedNotes.length - 1;
-        setActiveNote(updatedNotes[nextIndex]);
-      } else {
-        setActiveNote(null);
-      }
+      setActiveNote(null);
     }
+    
+    // Remove from open atomic cards if it's there
+    setOpenAtomicNotes(prev => prev.filter(note => note.id !== id));
+    
+    console.log(`Note deleted: ${id}`);
+  };
+
+  const deleteMultipleNotes = (ids: string[]) => {
+    setNotes(notes.filter(note => !ids.includes(note.id)));
+    
+    // If the active note is being deleted, clear it
+    if (activeNote && ids.includes(activeNote.id)) {
+      setActiveNote(null);
+    }
+    
+    // Remove any deleted notes from open atomic cards
+    setOpenAtomicNotes(prev => prev.filter(note => !ids.includes(note.id)));
+    
+    console.log(`Deleted ${ids.length} notes:`, ids);
   };
 
   const createAtomicNotes = (atomicNotes: Array<{ title: string; content: string }>) => {
@@ -409,6 +413,7 @@ These insights have practical implications for how we approach...
           onCreateTopic={createTopicFromAtomicNotes}
           onCreateStructuredNote={createStructuredNoteFromAtomicNotes}
           onDeleteNote={deleteNote}
+          onCreateAtomicNotes={createAtomicNotes}
         />
       );
     }
@@ -467,6 +472,7 @@ These insights have practical implications for how we approach...
             onSelectNote={selectNote}
             createNewNote={createNewNote}
             onDeleteNote={deleteNote}
+            onDeleteMultipleNotes={deleteMultipleNotes}
             activeNoteId={activeNote?.id}
             isCollapsed={isMobile ? !isMobileSidebarOpen : isSidebarCollapsed}
             toggleSidebar={handleToggleSidebar}

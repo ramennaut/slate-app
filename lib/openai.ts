@@ -1,13 +1,18 @@
-import OpenAI from 'openai';
+import OpenAI from "openai";
 
 // For client-side usage, the API key needs to be prefixed with NEXT_PUBLIC_
 const openai = new OpenAI({
   apiKey: process.env.NEXT_PUBLIC_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true // Required for client-side usage
+  dangerouslyAllowBrowser: true, // Required for client-side usage
 });
 
 export interface AtomicNote {
   title: string;
+  content: string;
+}
+
+// Interface for OpenAI response items
+interface OpenAIAtomicNoteResponse {
   content: string;
 }
 
@@ -27,16 +32,25 @@ export interface HubNoteAnalysis {
   }>;
 }
 
-export async function generateAtomicNotes(sourceContent: string): Promise<AtomicNote[]> {
+export async function generateAtomicNotes(
+  sourceContent: string
+): Promise<AtomicNote[]> {
+  console.log("generateAtomicNotes called with content length:", sourceContent.length);
+  
   if (!sourceContent.trim()) {
+    console.log("Empty content provided, returning empty array");
     return [];
   }
 
   // Check if API key is available
   if (!process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
-    console.warn('OpenAI API key not found, falling back to regex-based splitting');
-    return fallbackSplitIntoAtomicNotes(sourceContent);
+    console.log("OpenAI API key not found, falling back to regex-based splitting");
+    const fallbackResult = fallbackSplitIntoAtomicNotes(sourceContent);
+    console.log("Fallback produced", fallbackResult.length, "atomic notes");
+    return fallbackResult;
   }
+
+  console.log("Using OpenAI API to generate atomic notes");
 
   try {
     const response = await openai.chat.completions.create({
@@ -44,76 +58,103 @@ export async function generateAtomicNotes(sourceContent: string): Promise<Atomic
       messages: [
         {
           role: "system",
-          content: `You are an expert at breaking down complex content into atomic notes. Each atomic note should contain exactly ONE big idea that stands alone and is self-contained.
+          content: `You are an expert at breaking down complex or expressive content into atomic notes. Each atomic note should express exactly ONE meaningful idea or observation. The goal is to create a set of clear, self-contained notes that are useful for future thinking, writing, or linking.
 
-Rules:
-1. Each atomic note = 1 big idea only
-2. Make each note self-contained (can be understood without context)
-3. Preserve the original meaning and important details
-4. Use clear, concise language
-5. Don't create notes that are too granular (avoid splitting single concepts)
-6. Aim for 3-8 atomic notes depending on content complexity
+General Rules:
+1. Each atomic note = 1 big idea, quote, or insight.
+2. Make each note self-contained — it must make sense on its own.
+3. Use clear, concise language, but preserve depth and nuance.
+4. Don't over-split concepts into overly granular fragments.
+5. Return 1–8 atomic notes depending on the input's complexity and richness.
 
-IMPORTANT: Return ONLY a valid JSON array of objects with "title" and "content" fields. Do not wrap in markdown code blocks or add any other text. The title should be a brief, descriptive phrase (3-6 words). The content should be a complete, self-contained explanation of the idea.
+Special Rules for Literary or Poetic Input:
+1. If the text is emotional, poetic, or ambiguous, prioritize preserving standout quotes or phrases as atomic notes.
+2. You may also create a second note interpreting the quote if its meaning is not obvious.
+3. Avoid flattening poetic language into generic summaries — preserve tone and voice when the expression is meaningful.
+4. If a line has layered meaning, you can capture each interpretation as its own atomic note (up to 2–3 max).
+
+IMPORTANT: Return ONLY a valid JSON array of objects with a "content" field. Do not wrap in markdown code blocks or add any other text. The content should be a complete, self-contained explanation of the idea.
 
 Example format:
 [
   {
-    "title": "Key Concept Name",
-    "content": "Complete explanation of the concept that stands alone and can be understood without additional context."
+    "content": "A full explanation, observation, or quote that stands alone"
   }
-]`
+]`,
         },
         {
           role: "user",
-          content: `Please break this content into atomic notes:\n\n${sourceContent}`
-        }
+          content: `Please break this content into atomic notes:\n\n${sourceContent}`,
+        },
       ],
       temperature: 0.3, // Lower temperature for more consistent, focused output
       max_tokens: 2000,
     });
 
+    console.log("OpenAI API response received");
+
     const result = response.choices[0]?.message?.content;
     if (!result) {
-      throw new Error('No response from OpenAI');
+      throw new Error("No response from OpenAI");
     }
 
     // Clean the response - remove markdown code blocks if present
     let cleanedResult = result.trim();
-    if (cleanedResult.startsWith('```json')) {
-      cleanedResult = cleanedResult.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    } else if (cleanedResult.startsWith('```')) {
-      cleanedResult = cleanedResult.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    if (cleanedResult.startsWith("```json")) {
+      cleanedResult = cleanedResult
+        .replace(/^```json\s*/, "")
+        .replace(/\s*```$/, "");
+    } else if (cleanedResult.startsWith("```")) {
+      cleanedResult = cleanedResult
+        .replace(/^```\s*/, "")
+        .replace(/\s*```$/, "");
     }
+
+    console.log("Cleaned OpenAI response:", cleanedResult);
 
     // Parse the JSON response
-    let atomicNotes: AtomicNote[];
+    let rawResponse: OpenAIAtomicNoteResponse[];
     try {
-      atomicNotes = JSON.parse(cleanedResult) as AtomicNote[];
+      rawResponse = JSON.parse(cleanedResult) as OpenAIAtomicNoteResponse[];
     } catch (parseError) {
-      console.error('Failed to parse OpenAI response as JSON:', cleanedResult);
+      console.error("Failed to parse OpenAI response as JSON:", cleanedResult);
       throw new Error(`Invalid JSON response from OpenAI: ${parseError}`);
     }
-    
+
     // Validate the response structure
-    if (!Array.isArray(atomicNotes)) {
-      throw new Error('Invalid response format from OpenAI');
+    if (!Array.isArray(rawResponse)) {
+      throw new Error("Invalid response format from OpenAI");
     }
 
-    // Filter out any invalid notes and ensure they have both title and content
-    return atomicNotes.filter(note => 
-      note && 
-      typeof note.title === 'string' && 
-      typeof note.content === 'string' &&
-      note.title.trim().length > 0 &&
-      note.content.trim().length > 0
-    );
+    console.log("Parsed OpenAI response, processing", rawResponse.length, "items");
 
+    // Convert to AtomicNote format (adding empty title since the interface requires it)
+    const atomicNotes: AtomicNote[] = rawResponse
+      .map((item) => {
+        if (!item || typeof item !== 'object' || !item.content) {
+          return null;
+        }
+
+        return {
+          title: "", // Empty title since we don't use it in the UI
+          content: item.content.trim()
+        };
+      })
+      .filter((note): note is AtomicNote => 
+        note !== null && 
+        note.content.length > 0
+      );
+
+    console.log("OpenAI API produced", atomicNotes.length, "valid atomic notes");
+    return atomicNotes;
   } catch (error) {
-    console.error('Error generating atomic notes:', error);
-    
+    console.error("Error generating atomic notes:", error);
+
     // Fallback to the original regex-based splitting if OpenAI fails
-    return fallbackSplitIntoAtomicNotes(sourceContent);
+    console.log("Falling back to regex-based splitting due to error");
+    const fallbackResult = fallbackSplitIntoAtomicNotes(sourceContent);
+    console.log("Fallback produced", fallbackResult.length, "atomic notes");
+    return fallbackResult;
   }
 }
 
@@ -124,43 +165,45 @@ function fallbackSplitIntoAtomicNotes(content: string): AtomicNote[] {
   }
 
   const sections: AtomicNote[] = [];
-  
+
   // Split by headings first (# ## ### etc.)
   const headingSections = content.split(/(?=^#{1,6}\s+)/m);
-  
+
   for (const section of headingSections) {
     if (!section.trim()) continue;
-    
+
     // Check if this section starts with a heading
     const headingMatch = section.match(/^(#{1,6})\s+(.+?)(?:\n|$)/);
-    
+
     if (headingMatch) {
       const remainingContent = section.substring(headingMatch[0].length).trim();
-      
+
       if (remainingContent) {
         // Split content under heading more aggressively for atomic notes
         const subsections = remainingContent.split(/\n\s*\n+/);
-        
+
         for (let i = 0; i < subsections.length; i++) {
           const subsection = subsections[i].trim();
           if (!subsection) continue;
-          
+
           // Further split each subsection by sentences if it's long
           if (subsection.length > 200) {
-            const sentences = subsection.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 20);
+            const sentences = subsection
+              .split(/(?<=[.!?])\s+/)
+              .filter((s) => s.trim().length > 20);
             sentences.forEach((sentence) => {
               const trimmed = sentence.trim();
               if (trimmed) {
                 sections.push({
-                  title: "", // No title for atomic notes
-                  content: trimmed
+                  title: "",
+                  content: trimmed,
                 });
               }
             });
           } else {
             sections.push({
-              title: "", // No title for atomic notes
-              content: subsection
+              title: "",
+              content: subsection,
             });
           }
         }
@@ -168,83 +211,91 @@ function fallbackSplitIntoAtomicNotes(content: string): AtomicNote[] {
     } else {
       // No heading, split by multiple criteria for maximum atomicity
       const paragraphs = section.split(/\n\s*\n+/);
-      
+
       for (const paragraph of paragraphs) {
         const trimmed = paragraph.trim();
         if (!trimmed) continue;
-        
+
         // Check if this is a list section
         const listMatch = trimmed.match(/^(?:\d+\.\s+|\*\s+|\-\s+|•\s+)/);
-        
+
         if (listMatch) {
           // Split lists into individual items for true atomicity
-          const listItems = trimmed.split(/\n(?=\s*(?:\d+\.\s+|\*\s+|\-\s+|•\s+))/);
-          
+          const listItems = trimmed.split(
+            /\n(?=\s*(?:\d+\.\s+|\*\s+|\-\s+|•\s+))/
+          );
+
           listItems.forEach((item) => {
             const itemTrimmed = item.trim();
             if (!itemTrimmed) return;
-            
+
             sections.push({
-              title: "", // No title for atomic notes
-              content: itemTrimmed
+              title: "",
+              content: itemTrimmed,
             });
           });
         } else if (trimmed.length > 300) {
           // Split long paragraphs into sentences for atomicity
-          const sentences = trimmed.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 20);
-          
+          const sentences = trimmed
+            .split(/(?<=[.!?])\s+/)
+            .filter((s) => s.trim().length > 20);
+
           if (sentences.length > 1) {
             sentences.forEach((sentence) => {
               const sentenceTrimmed = sentence.trim();
               if (sentenceTrimmed) {
                 sections.push({
-                  title: "", // No title for atomic notes
-                  content: sentenceTrimmed + (sentenceTrimmed.match(/[.!?]$/) ? "" : ".")
+                  title: "",
+                  content:
+                    sentenceTrimmed +
+                    (sentenceTrimmed.match(/[.!?]$/) ? "" : "."),
                 });
               }
             });
           } else {
             // Single long sentence or paragraph
             sections.push({
-              title: "", // No title for atomic notes
-              content: trimmed
+              title: "",
+              content: trimmed,
             });
           }
         } else {
           // Regular paragraph - keep as atomic unit
           sections.push({
-            title: "", // No title for atomic notes
-            content: trimmed
+            title: "",
+            content: trimmed,
           });
         }
       }
     }
   }
-  
+
   // If no sections were created, try to split by sentences or create multiple atomic notes
   if (sections.length === 0) {
-    const sentences = content.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 10);
-    
+    const sentences = content
+      .split(/(?<=[.!?])\s+/)
+      .filter((s) => s.trim().length > 10);
+
     if (sentences.length > 1) {
       sentences.forEach((sentence) => {
         const trimmed = sentence.trim();
         if (trimmed) {
           sections.push({
-            title: "", // No title for atomic notes
-            content: trimmed + (trimmed.match(/[.!?]$/) ? "" : ".")
+            title: "",
+            content: trimmed + (trimmed.match(/[.!?]$/) ? "" : "."),
           });
         }
       });
     } else {
       // Even single content should become an atomic note
       sections.push({
-        title: "", // No title for atomic notes
-        content: content.trim()
+        title: "",
+        content: content.trim(),
       });
     }
   }
-  
-  return sections.filter(section => section.content.trim().length > 0);
+
+  return sections.filter((section) => section.content.trim().length > 0);
 }
 
 export async function analyzeAtomicNotesForHubNotes(
@@ -255,30 +306,34 @@ export async function analyzeAtomicNotesForHubNotes(
     return {
       trainsOfThought: [],
       newThemes: [],
-      existingThemeUpdates: []
+      existingThemeUpdates: [],
     };
   }
 
   // Check if API key is available
   if (!process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
-    console.warn('OpenAI API key not found, skipping hub note analysis');
+    console.warn("OpenAI API key not found, skipping hub note analysis");
     return {
       trainsOfThought: [],
       newThemes: [],
-      existingThemeUpdates: []
+      existingThemeUpdates: [],
     };
   }
 
   try {
-    const atomicNotesText = atomicNotes.map((note) => 
-      `[${note.id}] ${note.content}`
-    ).join('\n\n');
+    const atomicNotesText = atomicNotes
+      .map((note) => `[${note.id}] ${note.content}`)
+      .join("\n\n");
 
-    const existingHubNotesText = existingHubNotes.length > 0 
-      ? existingHubNotes.map(hub => 
-          `Hub Note ID: ${hub.id}\nTitle: ${hub.title}\nContent: ${hub.content}`
-        ).join('\n\n---\n\n')
-      : 'No existing hub notes.';
+    const existingHubNotesText =
+      existingHubNotes.length > 0
+        ? existingHubNotes
+            .map(
+              (hub) =>
+                `Hub Note ID: ${hub.id}\nTitle: ${hub.title}\nContent: ${hub.content}`
+            )
+            .join("\n\n---\n\n")
+        : "No existing hub notes.";
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -326,7 +381,7 @@ IMPORTANT: Return ONLY a valid JSON object with this exact structure:
 }
 
 Confidence should be 0.7-1.0 (only suggest connections you're confident about).
-The description should focus on WHAT the topic is about, not HOW the notes are connected.`
+The description should focus on WHAT the topic is about, not HOW the notes are connected.`,
         },
         {
           role: "user",
@@ -338,8 +393,8 @@ ${atomicNotesText}
 EXISTING HUB NOTES:
 ${existingHubNotesText}
 
-Please identify trains of thought and suggest hub note updates/creations.`
-        }
+Please identify trains of thought and suggest hub note updates/creations.`,
+        },
       ],
       temperature: 0.2,
       max_tokens: 2000,
@@ -347,15 +402,19 @@ Please identify trains of thought and suggest hub note updates/creations.`
 
     const result = response.choices[0]?.message?.content;
     if (!result) {
-      throw new Error('No response from OpenAI');
+      throw new Error("No response from OpenAI");
     }
 
     // Clean the response
     let cleanedResult = result.trim();
-    if (cleanedResult.startsWith('```json')) {
-      cleanedResult = cleanedResult.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    } else if (cleanedResult.startsWith('```')) {
-      cleanedResult = cleanedResult.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    if (cleanedResult.startsWith("```json")) {
+      cleanedResult = cleanedResult
+        .replace(/^```json\s*/, "")
+        .replace(/\s*```$/, "");
+    } else if (cleanedResult.startsWith("```")) {
+      cleanedResult = cleanedResult
+        .replace(/^```\s*/, "")
+        .replace(/\s*```$/, "");
     }
 
     // Parse the JSON response
@@ -363,45 +422,52 @@ Please identify trains of thought and suggest hub note updates/creations.`
     try {
       analysis = JSON.parse(cleanedResult) as HubNoteAnalysis;
     } catch (parseError) {
-      console.error('Failed to parse OpenAI hub note analysis:', cleanedResult);
+      console.error("Failed to parse OpenAI hub note analysis:", cleanedResult);
       throw new Error(`Invalid JSON response from OpenAI: ${parseError}`);
     }
 
     // Validate the response structure
-    if (!analysis.trainsOfThought || !analysis.newThemes || !analysis.existingThemeUpdates) {
-      throw new Error('Invalid response format from OpenAI');
+    if (
+      !analysis.trainsOfThought ||
+      !analysis.newThemes ||
+      !analysis.existingThemeUpdates
+    ) {
+      throw new Error("Invalid response format from OpenAI");
     }
 
     // Filter out low-confidence suggestions and validate structure
-    analysis.newThemes = analysis.newThemes.filter(theme => 
-      theme && 
-      theme.confidence >= 0.7 &&
-      theme.atomicNoteIds && 
-      theme.atomicNoteIds.length >= 2 &&
-      typeof theme.theme === 'string' &&
-      typeof theme.description === 'string'
+    analysis.newThemes = analysis.newThemes.filter(
+      (theme) =>
+        theme &&
+        theme.confidence >= 0.7 &&
+        theme.atomicNoteIds &&
+        theme.atomicNoteIds.length >= 2 &&
+        typeof theme.theme === "string" &&
+        typeof theme.description === "string"
     );
 
-    analysis.existingThemeUpdates = analysis.existingThemeUpdates.filter(update =>
-      update &&
-      update.hubNoteId &&
-      update.newAtomicNoteIds &&
-      update.newAtomicNoteIds.length > 0
+    analysis.existingThemeUpdates = analysis.existingThemeUpdates.filter(
+      (update) =>
+        update &&
+        update.hubNoteId &&
+        update.newAtomicNoteIds &&
+        update.newAtomicNoteIds.length > 0
     );
 
     return analysis;
-
   } catch (error) {
-    console.error('Error analyzing atomic notes for hub notes:', error);
+    console.error("Error analyzing atomic notes for hub notes:", error);
     return {
       trainsOfThought: [],
       newThemes: [],
-      existingThemeUpdates: []
+      existingThemeUpdates: [],
     };
   }
 }
 
-export async function generateHubNoteContent(atomicNotes: Array<{ content: string }>): Promise<{ title: string; description: string }> {
+export async function generateHubNoteContent(
+  atomicNotes: Array<{ content: string }>
+): Promise<{ title: string; description: string }> {
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -420,33 +486,39 @@ Return ONLY a valid JSON object with this exact structure:
   "description": "One sentence describing what this topic explores or connects."
 }
 
-Focus on the conceptual connections and overarching themes, not just listing what the notes contain.`
+Focus on the conceptual connections and overarching themes, not just listing what the notes contain.`,
         },
         {
           role: "user",
           content: `Generate a title and description for a hub note that connects these atomic notes:
 
-${atomicNotes.map((note, index) => `${index + 1}. ${note.content}`).join('\n\n')}
+${atomicNotes
+  .map((note, index) => `${index + 1}. ${note.content}`)
+  .join("\n\n")}
 
-Please identify the central theme and create a hub note title and description.`
-        }
+Please identify the central theme and create a hub note title and description.`,
+        },
       ],
       temperature: 0.7,
-      max_tokens: 150
+      max_tokens: 150,
     });
 
     const result = response.choices[0]?.message?.content?.trim();
-    
+
     if (!result) {
-      throw new Error('No response generated');
+      throw new Error("No response generated");
     }
 
     // Clean the response - remove markdown code blocks if present
     let cleanedResult = result;
-    if (cleanedResult.startsWith('```json')) {
-      cleanedResult = cleanedResult.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-    } else if (cleanedResult.startsWith('```')) {
-      cleanedResult = cleanedResult.replace(/^```\s*/, '').replace(/\s*```$/, '');
+    if (cleanedResult.startsWith("```json")) {
+      cleanedResult = cleanedResult
+        .replace(/^```json\s*/, "")
+        .replace(/\s*```$/, "");
+    } else if (cleanedResult.startsWith("```")) {
+      cleanedResult = cleanedResult
+        .replace(/^```\s*/, "")
+        .replace(/\s*```$/, "");
     }
 
     // Parse the JSON response
@@ -454,27 +526,32 @@ Please identify the central theme and create a hub note title and description.`
     try {
       hubContent = JSON.parse(cleanedResult);
     } catch (parseError) {
-      console.error('Failed to parse OpenAI hub note response:', cleanedResult);
+      console.error("Failed to parse OpenAI hub note response:", cleanedResult);
       throw new Error(`Invalid JSON response: ${parseError}`);
     }
 
     // Validate the response structure
     if (!hubContent.title || !hubContent.description) {
-      throw new Error('Invalid response format from OpenAI');
+      throw new Error("Invalid response format from OpenAI");
     }
 
     return hubContent;
   } catch (error) {
-    console.error('Error generating hub note content:', error);
+    console.error("Error generating hub note content:", error);
     // Fallback to generic content
     return {
-      title: `Topic - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
-      description: `This hub note connects ${atomicNotes.length} related atomic notes. Review the linked notes to identify common themes and patterns.`
+      title: `Topic - ${new Date().toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      })}`,
+      description: `This hub note connects ${atomicNotes.length} related atomic notes. Review the linked notes to identify common themes and patterns.`,
     };
   }
 }
 
-export async function generateStructureNoteTitle(atomicNotes: Array<{ content: string }>): Promise<string> {
+export async function generateStructureNoteTitle(
+  atomicNotes: Array<{ content: string }>
+): Promise<string> {
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -491,31 +568,146 @@ The title should be:
 - Professional/academic in tone
 - Suitable for a blog post, article, or book chapter
 
-Return only the title, nothing else.`
+Return only the title, nothing else.`,
         },
         {
           role: "user",
           content: `Generate a title for a structure note that synthesizes these atomic notes:
 
-${atomicNotes.map((note, index) => `${index + 1}. ${note.content}`).join('\n\n')}
+${atomicNotes
+  .map((note, index) => `${index + 1}. ${note.content}`)
+  .join("\n\n")}
 
-Title:`
-        }
+Title:`,
+        },
       ],
       temperature: 0.7,
-      max_tokens: 50
+      max_tokens: 50,
     });
 
     const title = response.choices[0]?.message?.content?.trim();
-    
+
     if (!title) {
-      throw new Error('No title generated');
+      throw new Error("No title generated");
     }
 
     return title;
   } catch (error) {
-    console.error('Error generating structure note title:', error);
+    console.error("Error generating structure note title:", error);
     // Fallback to a generic title
-    return `Structure Note - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    return `Structure Note - ${new Date().toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    })}`;
   }
-} 
+}
+
+export async function generateTermDefinition(
+  term: string,
+  context?: string
+): Promise<{ title: string; content: string } | null> {
+  console.log("generateTermDefinition called with:", { term, contextLength: context?.length || 0 });
+  
+  if (!term.trim()) {
+    console.log("Empty term provided, returning null");
+    return null;
+  }
+
+  // Check if API key is available
+  if (!process.env.NEXT_PUBLIC_OPENAI_API_KEY) {
+    console.log("OpenAI API key not found, cannot generate definition");
+    return null;
+  }
+
+  console.log("API key found, proceeding with OpenAI call");
+
+  try {
+    const contextPrompt = context 
+      ? `The term appears in this context: "${context}"\n\n`
+      : "";
+
+    console.log("Making OpenAI API call for term definition");
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert at creating clear, concise definitions for terms, concepts, jargon, and technical vocabulary. Your goal is to make complex ideas accessible while maintaining accuracy.
+
+Rules:
+1. Create a short, descriptive title (2-6 words) that captures the essence of the term
+2. Write a clear, self-contained definition that explains what the term means
+3. If it's technical jargon, explain it in plain language
+4. If context is provided, tailor the definition to that specific usage
+5. Keep the definition concise but comprehensive (1-3 sentences)
+6. Make it understandable to someone not familiar with the field
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "title": "Short descriptive title",
+  "content": "Clear, comprehensive definition of the term that stands alone and makes sense to someone unfamiliar with the concept."
+}`
+        },
+        {
+          role: "user",
+          content: `${contextPrompt}Please define this term: "${term}"`
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 300,
+    });
+
+    console.log("OpenAI API call completed successfully");
+
+    const result = response.choices[0]?.message?.content?.trim();
+
+    if (!result) {
+      console.log("No response content from OpenAI");
+      throw new Error("No response generated");
+    }
+
+    console.log("Raw OpenAI response:", result);
+
+    // Clean the response - remove markdown code blocks if present
+    let cleanedResult = result;
+    if (cleanedResult.startsWith("```json")) {
+      cleanedResult = cleanedResult
+        .replace(/^```json\s*/, "")
+        .replace(/\s*```$/, "");
+    } else if (cleanedResult.startsWith("```")) {
+      cleanedResult = cleanedResult
+        .replace(/^```\s*/, "")
+        .replace(/\s*```$/, "");
+    }
+
+    console.log("Cleaned response:", cleanedResult);
+
+    // Parse the JSON response
+    let definition: { title: string; content: string };
+    try {
+      definition = JSON.parse(cleanedResult);
+      console.log("Successfully parsed JSON:", definition);
+    } catch (parseError) {
+      console.error("Failed to parse OpenAI definition response:", cleanedResult);
+      throw new Error(`Invalid JSON response: ${parseError}`);
+    }
+
+    // Validate the response structure
+    if (!definition.title || !definition.content) {
+      console.log("Invalid response structure:", definition);
+      throw new Error("Invalid response format from OpenAI");
+    }
+
+    const finalResult = {
+      title: definition.title.trim(),
+      content: definition.content.trim()
+    };
+    
+    console.log("Returning final definition:", finalResult);
+    return finalResult;
+  } catch (error) {
+    console.error("Error generating term definition:", error);
+    return null;
+  }
+}

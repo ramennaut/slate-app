@@ -1,10 +1,11 @@
 "use client";
 
 import { Note } from "@/lib/types";
-import { useState } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
-import { ArrowLeft, X, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, X, Plus, Trash2, Layers, BookOpen } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
+import { generateTermDefinition } from "@/lib/openai";
 
 interface AtomicCardsViewProps {
   notes: Note[];
@@ -15,6 +16,7 @@ interface AtomicCardsViewProps {
   onCreateTopic?: (selectedAtomicNotes: Note[]) => Promise<void>;
   onCreateStructuredNote?: (selectedAtomicNotes: Note[]) => void;
   onDeleteNote?: (noteId: string) => void;
+  onCreateAtomicNotes?: (atomicNotes: Array<{ title: string; content: string }>) => void;
 }
 
 interface CardState {
@@ -33,10 +35,20 @@ export default function AtomicCardsView({
   onCreateTopic,
   onCreateStructuredNote,
   onDeleteNote,
+  onCreateAtomicNotes,
 }: AtomicCardsViewProps) {
   const [cardStates, setCardStates] = useState<CardState>({});
   const [isCreatingTopic, setIsCreatingTopic] = useState(false);
   const [isCreatingStructured, setIsCreatingStructured] = useState(false);
+  
+  // Text selection and context menu state
+  const [selectedText, setSelectedText] = useState("");
+  const [showContextMenu, setShowContextMenu] = useState(false);
+  const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+  const [isDefiningTerm, setIsDefiningTerm] = useState(false);
+  const [activeTextareaId, setActiveTextareaId] = useState<string | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const textareaRefs = useRef<{[key: string]: HTMLTextAreaElement | null}>({});
 
   const handleCreateTopic = async () => {
     if (!onCreateTopic || notes.length < 1) return;
@@ -97,6 +109,128 @@ export default function AtomicCardsView({
     });
   };
 
+  // Handle text selection for context menu
+  const handleTextSelection = useCallback((noteId: string) => {
+    const textarea = textareaRefs.current[noteId];
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    
+    if (start !== end) {
+      const selected = textarea.value.substring(start, end).trim();
+      if (selected.length > 0) {
+        setSelectedText(selected);
+        setActiveTextareaId(noteId);
+      } else {
+        setSelectedText("");
+        setShowContextMenu(false);
+        setActiveTextareaId(null);
+      }
+    } else {
+      setSelectedText("");
+      setShowContextMenu(false);
+      setActiveTextareaId(null);
+    }
+  }, []);
+
+  // Handle right-click context menu
+  const handleContextMenu = useCallback((event: React.MouseEvent, noteId: string) => {
+    // Always prevent default context menu initially
+    event.preventDefault();
+    
+    // Check for selected text at the time of right-click
+    const textarea = textareaRefs.current[noteId];
+    if (!textarea) return;
+    
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    
+    if (start !== end) {
+      const currentSelectedText = textarea.value.substring(start, end).trim();
+      
+      // Only show our custom context menu if there's selected text
+      if (currentSelectedText.length > 0) {
+        setSelectedText(currentSelectedText);
+        setActiveTextareaId(noteId);
+        setContextMenuPosition({ x: event.clientX, y: event.clientY });
+        setShowContextMenu(true);
+      }
+    }
+  }, []);
+
+  // Handle defining a term
+  const handleDefineTerm = async () => {
+    if (!selectedText || isDefiningTerm || !activeTextareaId) return;
+
+    console.log("Starting term definition in flash cards for:", selectedText);
+
+    // Set loading state immediately for instant feedback
+    // DON'T hide context menu yet - keep it visible to show loading state
+    setIsDefiningTerm(true);
+
+    try {
+      // Get context from the active textarea
+      const textarea = textareaRefs.current[activeTextareaId];
+      const textContent = textarea?.value || "";
+      
+      let context = "";
+      const termIndex = textContent.indexOf(selectedText);
+      if (termIndex !== -1) {
+        const contextStart = Math.max(0, termIndex - 100);
+        const contextEnd = Math.min(textContent.length, termIndex + selectedText.length + 100);
+        context = textContent.substring(contextStart, contextEnd);
+      }
+
+      console.log("About to call generateTermDefinition with context:", context.substring(0, 50) + "...");
+
+      const definition = await generateTermDefinition(selectedText, context);
+      
+      console.log("Received definition:", definition);
+      
+      if (definition && onCreateAtomicNotes) {
+        console.log("Creating atomic note with definition in flash cards");
+        // Create an atomic note with the definition
+        onCreateAtomicNotes([{
+          title: definition.title,
+          content: definition.content
+        }]);
+        console.log("Called onCreateAtomicNotes successfully in flash cards");
+      } else {
+        console.log("Failed to create atomic note in flash cards:", {
+          hasDefinition: !!definition,
+          hasCallback: !!onCreateAtomicNotes
+        });
+      }
+    } catch (error) {
+      console.error("Error defining term in flash cards:", error);
+    } finally {
+      // Hide context menu and reset state after operation completes
+      setShowContextMenu(false);
+      setIsDefiningTerm(false);
+      setSelectedText("");
+      setActiveTextareaId(null);
+    }
+  };
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contextMenuRef.current && 
+          !contextMenuRef.current.contains(event.target as Node)) {
+        setShowContextMenu(false);
+      }
+    };
+
+    if (showContextMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showContextMenu]);
+
   const renderCard = (note: Note) => {
     const content = getCardContent(note);
     const unsaved = hasUnsavedChanges(note);
@@ -115,7 +249,7 @@ export default function AtomicCardsView({
             <Button
               variant="ghost"
               size="sm"
-              className="text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 p-2 h-auto -ml-2 rounded-lg transition-colors flex-1"
+              className="text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 p-2 h-auto -ml-2 rounded-lg transition-colors min-w-0 max-w-[180px]"
               onClick={() => {
                 const sourceNote = allNotes.find(n => n.id === note.sourceNoteId);
                 if (sourceNote) {
@@ -123,18 +257,32 @@ export default function AtomicCardsView({
                 }
               }}
             >
-              <ArrowLeft className="h-3 w-3 mr-2" />
+              <ArrowLeft className="h-3 w-3 mr-2 flex-shrink-0" />
               <span className="text-xs font-medium truncate">
-                {allNotes.find(n => n.id === note.sourceNoteId)?.title || "Source Note"}
+                {(() => {
+                  const sourceNote = allNotes.find(n => n.id === note.sourceNoteId);
+                  if (!sourceNote) return "Source Note";
+                  
+                  // If source is an atomic note, show its reference number
+                  if (sourceNote.isAtomic && sourceNote.globalNumber) {
+                    return `AN-${sourceNote.globalNumber}`;
+                  }
+                  
+                  // Otherwise show the title for regular notes
+                  return sourceNote.title || "Source Note";
+                })()}
               </span>
             </Button>
           )}
+          
+          {/* Spacer to push close button to the right */}
+          <div className="flex-1"></div>
           
           {/* Close button */}
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 p-1.5 h-auto ml-2 rounded-lg transition-colors"
+            className="text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 p-1.5 h-auto rounded-lg transition-colors flex-shrink-0"
             onClick={() => onCloseCard(note.id)}
           >
             <X className="h-3.5 w-3.5" />
@@ -144,14 +292,21 @@ export default function AtomicCardsView({
         {/* Card Content */}
         <div className="p-5">
           <textarea
+            ref={(el) => {
+              textareaRefs.current[note.id] = el;
+            }}
             value={content}
             onChange={(e) => updateCardContent(note.id, e.target.value)}
+            onSelect={() => handleTextSelection(note.id)}
+            onContextMenu={(e) => handleContextMenu(e, note.id)}
             placeholder="Write your atomic note here..."
-            className="w-full h-48 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-sm leading-relaxed shadow-none rounded-none outline-none overflow-y-auto placeholder:text-muted-foreground/40 selection:bg-primary/20"
+            className="w-full h-48 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-sm leading-relaxed shadow-none rounded-none outline-none overflow-y-auto placeholder:text-muted-foreground/40 selection:bg-primary/20 break-words overflow-wrap-anywhere"
             style={{
               fontFamily: "inherit",
               fontSize: "14px",
               lineHeight: "1.6em",
+              wordWrap: "break-word",
+              overflowWrap: "anywhere",
             }}
           />
         </div>
@@ -166,6 +321,15 @@ export default function AtomicCardsView({
                   day: 'numeric'
                 })}
               </span>
+              {/* Atomic note reference number */}
+              {note.isAtomic && note.globalNumber && (
+                <>
+                  <span className="text-xs text-muted-foreground/60">•</span>
+                  <span className="text-xs font-semibold text-muted-foreground/80">
+                    #AN-{note.globalNumber}
+                  </span>
+                </>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {unsaved && (
@@ -212,7 +376,7 @@ export default function AtomicCardsView({
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-gradient-to-r from-primary to-primary/60"></div>
+            <Layers className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-bold text-foreground">
               Flash Card View
             </h2>
@@ -220,6 +384,17 @@ export default function AtomicCardsView({
               {notes.length}
             </span>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              notes.forEach(note => onCloseCard(note.id));
+            }}
+            className="text-xs font-medium"
+          >
+            <X className="h-3 w-3 mr-1" />
+            Clear All
+          </Button>
         </div>
         <p className="text-sm text-muted-foreground/80 ml-6">
           {(onCreateTopic || onCreateStructuredNote) ? "Create hub notes or structure notes from all notes in this view" : "Click and edit multiple notes simultaneously"}
@@ -234,7 +409,7 @@ export default function AtomicCardsView({
 
       {/* Floating Create Buttons */}
       {(onCreateTopic || onCreateStructuredNote) && (
-        <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-3">
+        <div className="fixed bottom-6 right-6 z-50 flex gap-3">
           {onCreateTopic && (
             <Button
               onClick={handleCreateTopic}
@@ -251,7 +426,7 @@ export default function AtomicCardsView({
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  Create Topic ({notes.length})
+                  Create a Hub ({notes.length})
                 </>
               )}
             </Button>
@@ -261,8 +436,8 @@ export default function AtomicCardsView({
             <Button
               onClick={handleCreateStructuredNote}
               size="sm"
-              variant="outline"
-              className="font-medium shadow-lg hover:shadow-xl transition-shadow bg-background"
+              variant="default"
+              className="font-medium shadow-lg hover:shadow-xl transition-shadow"
               disabled={notes.length === 0 || isCreatingTopic || isCreatingStructured}
               title="Create a structure note from all notes in this view"
             >
@@ -274,11 +449,45 @@ export default function AtomicCardsView({
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  Create Structure ({notes.length})
+                  Expand this Topic ({notes.length})
                 </>
               )}
             </Button>
           )}
+        </div>
+      )}
+
+      {/* Context Menu for defining terms */}
+      {showContextMenu && selectedText && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 bg-background border border-border rounded-lg shadow-xl py-1 min-w-48"
+          style={{
+            left: contextMenuPosition.x,
+            top: contextMenuPosition.y,
+          }}
+        >
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`w-full justify-start px-3 py-2 h-auto text-sm font-normal hover:bg-accent transition-all duration-200 ${
+              isDefiningTerm ? 'bg-accent/50 cursor-not-allowed' : ''
+            }`}
+            onClick={handleDefineTerm}
+            disabled={isDefiningTerm}
+          >
+            {isDefiningTerm ? (
+              <>
+                <div className="animate-spin h-4 w-4 border-2 border-primary border-t-transparent rounded-full mr-2 flex-shrink-0" />
+                <span className="text-primary font-medium">Defining...</span>
+              </>
+            ) : (
+              <>
+                <BookOpen className="h-4 w-4 mr-2 flex-shrink-0" />
+                <span>Define &quot;{selectedText.length > 20 ? selectedText.substring(0, 20) + "..." : selectedText}&quot;</span>
+              </>
+            )}
+          </Button>
         </div>
       )}
     </div>

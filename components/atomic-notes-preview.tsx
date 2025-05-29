@@ -133,10 +133,14 @@ export default function AtomicNotesPreview({
               <textarea
                 value={content}
                 onChange={(e) => updateNoteContent(index, e.target.value)}
-                className="w-full min-h-[80px] p-2 text-sm border border-border rounded resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                className="w-full min-h-[80px] p-2 text-sm border border-border rounded resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary break-words overflow-wrap-anywhere"
+                style={{
+                  wordWrap: "break-word",
+                  overflowWrap: "anywhere",
+                }}
               />
             ) : (
-              <p className="text-sm text-foreground/90 leading-relaxed">
+              <p className="text-sm text-foreground/90 leading-relaxed break-words overflow-wrap-anywhere">
                 {content}
               </p>
             )}
@@ -190,10 +194,14 @@ export default function AtomicNotesPreview({
           <textarea
             value={content}
             onChange={(e) => updateNoteContent(index, e.target.value)}
-            className="w-full h-32 p-2 text-sm border border-border rounded resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            className="w-full h-32 p-2 text-sm border border-border rounded resize-none focus:ring-2 focus:ring-primary/20 focus:border-primary break-words overflow-wrap-anywhere"
+            style={{
+              wordWrap: "break-word",
+              overflowWrap: "anywhere",
+            }}
           />
         ) : (
-          <p className="text-sm text-foreground/90 leading-relaxed line-clamp-6">
+          <p className="text-sm text-foreground/90 leading-relaxed break-words overflow-wrap-anywhere">
             {content}
           </p>
         )}

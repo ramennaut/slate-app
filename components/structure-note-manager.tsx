@@ -153,7 +153,7 @@ export default function StructureNoteManager({
                       <button
                         key={note.id}
                         onClick={() => addAtomicNote(note)}
-                        className="w-full text-left p-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded transition-colors"
+                        className="w-full text-left p-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded transition-colors break-words overflow-wrap-anywhere"
                       >
                         {getPreviewText(note.content)}
                       </button>
@@ -193,7 +193,7 @@ export default function StructureNoteManager({
               <div className="flex-1 min-w-0">
                 <button
                   onClick={() => onSelectNote(note)}
-                  className="w-full text-left text-xs text-muted-foreground hover:text-foreground transition-colors whitespace-pre-wrap line-clamp-3"
+                  className="w-full text-left text-xs text-muted-foreground hover:text-foreground transition-colors whitespace-pre-wrap break-words overflow-wrap-anywhere"
                 >
                   {getPreviewText(note.content)}
                 </button>

@@ -135,4 +135,11 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+  
+  .text-wrap-anywhere {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    word-wrap: break-word;
+    hyphens: auto;
+  }
 }
