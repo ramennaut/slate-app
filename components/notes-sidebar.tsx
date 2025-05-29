@@ -169,7 +169,7 @@ export default function NotesSidebar({
       setSelectedNoteIds(new Set());
       setLastClickedId(null);
     }
-  }, [activeNoteId]);
+  }, [activeNoteId, selectedNoteIds.size]);
 
   const toggleSection = (sectionName: string) => {
     const newCollapsed = new Set(collapsedSections);
