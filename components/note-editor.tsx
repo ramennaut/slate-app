@@ -852,18 +852,6 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
             readOnly={note.isSummary}
             disabled={note.isSummary}
           />
-          
-          {/* Hub Note status indicator - right below title */}
-          {note.isSummary && (
-            <div className="mt-3 pt-3 border-t border-border/30">
-              <span className="flex items-center text-sm text-muted-foreground font-medium">
-                <div className="w-2 h-2 rounded-full bg-blue-500 mr-2"></div>
-                Hub Note • Read-only • Manage linked notes below
-              </span>
-            </div>
-          )}
-          
-          {/* Remove atomic note links for summary notes - they'll be managed below */}
         </div>
       )}
 
@@ -935,9 +923,9 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
             ) : note.isSummary ? (
               /* Hub Note - Show only description, no content editing */
               <div className="max-w-4xl mx-auto w-full">
-                <div className="p-6 bg-muted/20 rounded-lg border border-border/30">
+                <div className="p-6 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
                   <div 
-                    className="text-base text-muted-foreground leading-relaxed break-words overflow-wrap-anywhere cursor-text select-text"
+                    className="text-base text-blue-900 dark:text-blue-100 leading-relaxed break-words overflow-wrap-anywhere cursor-text select-text"
                     onMouseUp={handleTextSelection}
                     onContextMenu={handleContextMenu}
                     style={{ userSelect: 'text' }}
