@@ -5,6 +5,8 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
 import { ArrowLeft, X, Plus, Trash2, Layers, BookOpen, MessageCircle } from "lucide-react";
 import { generateTermDefinition } from "@/lib/openai";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface AtomicCardsViewProps {
   notes: Note[];
@@ -42,26 +44,78 @@ interface SearchAnswerDisplayProps {
 }
 
 function SearchAnswerDisplay({ answer, question, noteCount, onNoteClick, onRefresh, isRefreshing, onClose }: SearchAnswerDisplayProps) {
-  // Parse the answer and make AN-X references clickable
-  const renderAnswerWithLinks = (text: string) => {
-    // Split by atomic note references (AN-X format)
-    const parts = text.split(/(AN-\d+)/g);
-    
-    return parts.map((part, index) => {
-      // Check if this part is an atomic note reference
-      if (part.match(/^AN-\d+$/)) {
-        return (
-          <button
-            key={index}
-            className="text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary/60 transition-colors cursor-pointer"
-            onClick={() => onNoteClick(part)}
-          >
-            {part}
-          </button>
-        );
-      }
-      return <span key={index}>{part}</span>;
-    });
+  // Component to render markdown with clickable note references
+  const MarkdownWithNoteRefs = ({ text }: { text: string }) => {
+    return (
+      <ReactMarkdown 
+        remarkPlugins={[remarkGfm]}
+        components={{
+          // Custom text renderer to handle AN-X references
+          text: ({ children }) => {
+            const textContent = String(children);
+            const parts = textContent.split(/(AN-\d+)/g);
+            
+            return (
+              <>
+                {parts.map((part, index) => {
+                  if (part.match(/^AN-\d+$/)) {
+                    return (
+                      <button
+                        key={index}
+                        className="text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary/60 transition-colors cursor-pointer"
+                        onClick={() => onNoteClick(part)}
+                      >
+                        {part}
+                      </button>
+                    );
+                  }
+                  return <span key={index}>{part}</span>;
+                })}
+              </>
+            );
+          },
+          // Style other markdown elements properly
+          p: ({ children }) => (
+            <p className="mb-3 last:mb-0">{children}</p>
+          ),
+          strong: ({ children }) => (
+            <strong className="font-semibold">{children}</strong>
+          ),
+          em: ({ children }) => (
+            <em className="italic">{children}</em>
+          ),
+          code: ({ children }) => (
+            <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">{children}</code>
+          ),
+          ul: ({ children }) => (
+            <ul className="list-disc list-outside mb-3 space-y-1 ml-6">{children}</ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="list-decimal list-outside mb-3 space-y-1 ml-6">{children}</ol>
+          ),
+          li: ({ children }) => (
+            <li className="leading-relaxed pl-2">{children}</li>
+          ),
+          h1: ({ children }) => (
+            <h1 className="text-lg font-bold mb-3 mt-4 first:mt-0">{children}</h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="text-md font-bold mb-2 mt-3 first:mt-0">{children}</h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="text-sm font-bold mb-2 mt-2 first:mt-0">{children}</h3>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-4 border-primary/30 pl-4 italic mb-3 mt-3">{children}</blockquote>
+          ),
+          pre: ({ children }) => (
+            <pre className="bg-muted p-3 rounded-lg overflow-x-auto text-xs font-mono mb-3 mt-3">{children}</pre>
+          ),
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    );
   };
 
   return (
@@ -111,9 +165,9 @@ function SearchAnswerDisplay({ answer, question, noteCount, onNoteClick, onRefre
               )}
             </div>
           </div>
-          <div className="prose prose-sm max-w-none">
-            <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-              {renderAnswerWithLinks(answer)}
+          <div className="prose prose-sm max-w-none text-foreground">
+            <div className="text-sm leading-relaxed">
+              <MarkdownWithNoteRefs text={answer} />
             </div>
           </div>
           <div className="mt-3 text-xs text-muted-foreground">
@@ -526,7 +580,7 @@ export default function AtomicCardsView({
     );
   };
 
-  if (notes.length === 0) {
+  if (notes.length === 0 && !searchAnswer) {
     return null;
   }
 

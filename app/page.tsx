@@ -122,6 +122,8 @@ export default function Home() {
       // For regular notes, set as active and clear atomic cards
       setActiveNote(note);
       setOpenAtomicNotes([]);
+      // Clear search results when navigating to a regular note
+      setSearchAnswerData(null);
     }
     
     if (isMobile) { // On mobile, close sidebar when a note is selected to show the editor
@@ -512,7 +514,7 @@ The train of thought above suggests several key ideas worth exploring further...
   };
 
   // Handle RAG question submission
-  const handleQuestionSubmit = async (question: string): Promise<{ answer: string; sourcedNotes: Note[] } | null> => {
+  const handleQuestionSubmit = async (question: string): Promise<{ answer: string; sourcedNotes: Note[] }> => {
     const atomicNotes = notes.filter(note => note.isAtomic);
     
     if (atomicNotes.length === 0) {
@@ -532,13 +534,6 @@ The train of thought above suggests several key ideas worth exploring further...
         }))
       );
       
-      if (!result) {
-        return {
-          answer: "I encountered an error while searching your notes. Please try again.",
-          sourcedNotes: []
-        };
-      }
-      
       // Map back to full Note objects for display
       const sourcedNotes = result.sourcedNotes.map(sourceNote => 
         notes.find(note => note.id === sourceNote.id)
@@ -551,7 +546,7 @@ The train of thought above suggests several key ideas worth exploring further...
     } catch (error) {
       console.error("Error in handleQuestionSubmit:", error);
       return {
-        answer: "I encountered an error while searching your notes. Please try again.",
+        answer: `Something went wrong while processing your question: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`,
         sourcedNotes: []
       };
     }
@@ -589,16 +584,19 @@ The train of thought above suggests several key ideas worth exploring further...
         }))
       );
       
-      if (result) {
-        // Update with new answer, keeping the same source notes (the ones in the viewer)
-        setSearchAnswerData({ 
-          answer: result.answer, 
-          question: searchAnswerData.question 
-        });
-        // Note: We don't update openAtomicNotes here since we want to keep the current viewer state
-      }
+      // Always update with the new answer (since function never returns null now)
+      setSearchAnswerData({ 
+        answer: result.answer, 
+        question: searchAnswerData.question 
+      });
+      // Note: We don't update openAtomicNotes here since we want to keep the current viewer state
     } catch (error) {
       console.error("Error refreshing answer:", error);
+      // Provide user feedback even on error
+      setSearchAnswerData({ 
+        answer: `Error refreshing answer: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`, 
+        question: searchAnswerData.question 
+      });
     } finally {
       setIsRefreshingAnswer(false);
     }
@@ -628,8 +626,8 @@ The train of thought above suggests several key ideas worth exploring further...
       );
     }
 
-    // Show multi-card view if atomic notes are open
-    if (openAtomicNotes.length > 0) {
+    // Show search results or multi-card view if we have search data OR atomic notes are open
+    if (searchAnswerData || openAtomicNotes.length > 0) {
       return (
         <AtomicCardsView
           notes={openAtomicNotes}
