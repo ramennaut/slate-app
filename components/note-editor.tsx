@@ -739,6 +739,8 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
   const handleDefineTerm = async () => {
     if (!selectedText || isDefiningTerm) return;
 
+    console.log("Starting term definition for:", selectedText);
+
     // Set loading state immediately for instant feedback
     // DON'T hide context menu yet - keep it visible to show loading state
     setIsDefiningTerm(true);
@@ -763,14 +765,25 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
         context = textContent.substring(contextStart, contextEnd);
       }
 
+      console.log("About to call generateTermDefinition with context:", context.substring(0, 50) + "...");
+
       const definition = await generateTermDefinition(selectedText, context);
       
+      console.log("Received definition:", definition);
+      
       if (definition && onCreateAtomicNotes) {
+        console.log("Creating atomic note with definition");
         // Create an atomic note with the definition
         onCreateAtomicNotes([{
           title: definition.title,
           content: definition.content
         }]);
+        console.log("Called onCreateAtomicNotes successfully");
+      } else {
+        console.log("Failed to create atomic note:", {
+          hasDefinition: !!definition,
+          hasCallback: !!onCreateAtomicNotes
+        });
       }
     } catch (error) {
       console.error("Error defining term:", error);

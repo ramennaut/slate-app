@@ -606,7 +606,10 @@ export async function generateTermDefinition(
   term: string,
   context?: string
 ): Promise<{ title: string; content: string } | null> {
+  console.log("generateTermDefinition called with:", { term, contextLength: context?.length || 0 });
+  
   if (!term.trim()) {
+    console.log("Empty term provided, returning null");
     return null;
   }
 
@@ -616,10 +619,14 @@ export async function generateTermDefinition(
     return null;
   }
 
+  console.log("API key found, proceeding with OpenAI call");
+
   try {
     const contextPrompt = context 
       ? `The term appears in this context: "${context}"\n\n`
       : "";
+
+    console.log("Making OpenAI API call for term definition");
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -651,11 +658,16 @@ Return ONLY a valid JSON object with this exact structure:
       max_tokens: 300,
     });
 
+    console.log("OpenAI API call completed successfully");
+
     const result = response.choices[0]?.message?.content?.trim();
 
     if (!result) {
+      console.log("No response content from OpenAI");
       throw new Error("No response generated");
     }
+
+    console.log("Raw OpenAI response:", result);
 
     // Clean the response - remove markdown code blocks if present
     let cleanedResult = result;
@@ -669,10 +681,13 @@ Return ONLY a valid JSON object with this exact structure:
         .replace(/\s*```$/, "");
     }
 
+    console.log("Cleaned response:", cleanedResult);
+
     // Parse the JSON response
     let definition: { title: string; content: string };
     try {
       definition = JSON.parse(cleanedResult);
+      console.log("Successfully parsed JSON:", definition);
     } catch (parseError) {
       console.error("Failed to parse OpenAI definition response:", cleanedResult);
       throw new Error(`Invalid JSON response: ${parseError}`);
@@ -680,13 +695,17 @@ Return ONLY a valid JSON object with this exact structure:
 
     // Validate the response structure
     if (!definition.title || !definition.content) {
+      console.log("Invalid response structure:", definition);
       throw new Error("Invalid response format from OpenAI");
     }
 
-    return {
+    const finalResult = {
       title: definition.title.trim(),
       content: definition.content.trim()
     };
+    
+    console.log("Returning final definition:", finalResult);
+    return finalResult;
   } catch (error) {
     console.error("Error generating term definition:", error);
     return null;

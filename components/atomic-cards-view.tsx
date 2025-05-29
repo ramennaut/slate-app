@@ -163,6 +163,8 @@ export default function AtomicCardsView({
   const handleDefineTerm = async () => {
     if (!selectedText || isDefiningTerm || !activeTextareaId) return;
 
+    console.log("Starting term definition in flash cards for:", selectedText);
+
     // Set loading state immediately for instant feedback
     // DON'T hide context menu yet - keep it visible to show loading state
     setIsDefiningTerm(true);
@@ -180,17 +182,28 @@ export default function AtomicCardsView({
         context = textContent.substring(contextStart, contextEnd);
       }
 
+      console.log("About to call generateTermDefinition with context:", context.substring(0, 50) + "...");
+
       const definition = await generateTermDefinition(selectedText, context);
       
+      console.log("Received definition:", definition);
+      
       if (definition && onCreateAtomicNotes) {
+        console.log("Creating atomic note with definition in flash cards");
         // Create an atomic note with the definition
         onCreateAtomicNotes([{
           title: definition.title,
           content: definition.content
         }]);
+        console.log("Called onCreateAtomicNotes successfully in flash cards");
+      } else {
+        console.log("Failed to create atomic note in flash cards:", {
+          hasDefinition: !!definition,
+          hasCallback: !!onCreateAtomicNotes
+        });
       }
     } catch (error) {
-      console.error("Error defining term:", error);
+      console.error("Error defining term in flash cards:", error);
     } finally {
       // Hide context menu and reset state after operation completes
       setShowContextMenu(false);
@@ -236,7 +249,7 @@ export default function AtomicCardsView({
             <Button
               variant="ghost"
               size="sm"
-              className="text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 p-2 h-auto -ml-2 rounded-lg transition-colors flex-1 min-w-0 mr-2"
+              className="text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 p-2 h-auto -ml-2 rounded-lg transition-colors min-w-0 max-w-[180px]"
               onClick={() => {
                 const sourceNote = allNotes.find(n => n.id === note.sourceNoteId);
                 if (sourceNote) {
@@ -245,11 +258,25 @@ export default function AtomicCardsView({
               }}
             >
               <ArrowLeft className="h-3 w-3 mr-2 flex-shrink-0" />
-              <span className="text-xs font-medium truncate text-left">
-                {allNotes.find(n => n.id === note.sourceNoteId)?.title || "Source Note"}
+              <span className="text-xs font-medium truncate">
+                {(() => {
+                  const sourceNote = allNotes.find(n => n.id === note.sourceNoteId);
+                  if (!sourceNote) return "Source Note";
+                  
+                  // If source is an atomic note, show its reference number
+                  if (sourceNote.isAtomic && sourceNote.globalNumber) {
+                    return `AN-${sourceNote.globalNumber}`;
+                  }
+                  
+                  // Otherwise show the title for regular notes
+                  return sourceNote.title || "Source Note";
+                })()}
               </span>
             </Button>
           )}
+          
+          {/* Spacer to push close button to the right */}
+          <div className="flex-1"></div>
           
           {/* Close button */}
           <Button
@@ -294,6 +321,15 @@ export default function AtomicCardsView({
                   day: 'numeric'
                 })}
               </span>
+              {/* Atomic note reference number */}
+              {note.isAtomic && note.globalNumber && (
+                <>
+                  <span className="text-xs text-muted-foreground/60">•</span>
+                  <span className="text-xs font-semibold text-muted-foreground/80">
+                    #AN-{note.globalNumber}
+                  </span>
+                </>
+              )}
             </div>
             <div className="flex items-center gap-2">
               {unsaved && (
