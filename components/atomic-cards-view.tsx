@@ -3,7 +3,7 @@
 import { Note } from "@/lib/types";
 import { useState } from "react";
 import { Button } from "./ui/button";
-import { ArrowLeft, X, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, X, Plus, Trash2, Layers } from "lucide-react";
 import { ScrollArea } from "./ui/scroll-area";
 
 interface AtomicCardsViewProps {
@@ -115,7 +115,7 @@ export default function AtomicCardsView({
             <Button
               variant="ghost"
               size="sm"
-              className="text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 p-2 h-auto -ml-2 rounded-lg transition-colors flex-1"
+              className="text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 p-2 h-auto -ml-2 rounded-lg transition-colors flex-1 min-w-0 mr-2"
               onClick={() => {
                 const sourceNote = allNotes.find(n => n.id === note.sourceNoteId);
                 if (sourceNote) {
@@ -123,8 +123,8 @@ export default function AtomicCardsView({
                 }
               }}
             >
-              <ArrowLeft className="h-3 w-3 mr-2" />
-              <span className="text-xs font-medium truncate">
+              <ArrowLeft className="h-3 w-3 mr-2 flex-shrink-0" />
+              <span className="text-xs font-medium truncate text-left">
                 {allNotes.find(n => n.id === note.sourceNoteId)?.title || "Source Note"}
               </span>
             </Button>
@@ -134,7 +134,7 @@ export default function AtomicCardsView({
           <Button
             variant="ghost"
             size="sm"
-            className="text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 p-1.5 h-auto ml-2 rounded-lg transition-colors"
+            className="text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 p-1.5 h-auto rounded-lg transition-colors flex-shrink-0"
             onClick={() => onCloseCard(note.id)}
           >
             <X className="h-3.5 w-3.5" />
@@ -147,11 +147,13 @@ export default function AtomicCardsView({
             value={content}
             onChange={(e) => updateCardContent(note.id, e.target.value)}
             placeholder="Write your atomic note here..."
-            className="w-full h-48 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-sm leading-relaxed shadow-none rounded-none outline-none overflow-y-auto placeholder:text-muted-foreground/40 selection:bg-primary/20"
+            className="w-full h-48 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-sm leading-relaxed shadow-none rounded-none outline-none overflow-y-auto placeholder:text-muted-foreground/40 selection:bg-primary/20 break-words overflow-wrap-anywhere"
             style={{
               fontFamily: "inherit",
               fontSize: "14px",
               lineHeight: "1.6em",
+              wordWrap: "break-word",
+              overflowWrap: "anywhere",
             }}
           />
         </div>
@@ -212,7 +214,7 @@ export default function AtomicCardsView({
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-gradient-to-r from-primary to-primary/60"></div>
+            <Layers className="h-5 w-5 text-primary" />
             <h2 className="text-xl font-bold text-foreground">
               Flash Card View
             </h2>

@@ -678,11 +678,13 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
               }
             }}
             placeholder="Note title"
-            className="text-3xl font-bold border-none px-0 py-0 focus-visible:ring-0 focus:ring-0 focus:outline-none bg-transparent shadow-none rounded-none outline-none h-auto w-full placeholder:text-muted-foreground/40 break-words resize-none overflow-hidden"
+            className="text-3xl font-bold border-none px-0 py-0 focus-visible:ring-0 focus:ring-0 focus:outline-none bg-transparent shadow-none rounded-none outline-none h-auto w-full placeholder:text-muted-foreground/40 break-words overflow-wrap-anywhere resize-none overflow-hidden"
             rows={1}
             style={{
               minHeight: "auto",
               height: "auto",
+              wordWrap: "break-word",
+              overflowWrap: "anywhere",
             }}
             onInput={(e) => {
               const target = e.target as HTMLTextAreaElement;
@@ -721,7 +723,7 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-muted-foreground hover:text-foreground p-1 h-auto -ml-1"
+                      className="text-muted-foreground hover:text-foreground p-1 h-auto -ml-1 max-w-full min-w-0"
                       onClick={() => {
                         const sourceNote = notes.find(n => n.id === note.sourceNoteId);
                         if (sourceNote) {
@@ -729,8 +731,8 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
                         }
                       }}
                     >
-                      <ArrowLeft className="h-3 w-3 mr-1" />
-                      <span className="text-xs">
+                      <ArrowLeft className="h-3 w-3 mr-1 flex-shrink-0" />
+                      <span className="text-xs truncate text-left">
                         {notes.find(n => n.id === note.sourceNoteId)?.title || "Source Note"}
                       </span>
                     </Button>
@@ -745,11 +747,13 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
                     onChange={handleContentChange}
                     onKeyDown={handleKeyDown}
                     placeholder="Write your atomic note here..."
-                    className="w-full resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-[400px] overflow-y-auto placeholder:text-muted-foreground/50"
+                    className="w-full resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-[400px] overflow-y-auto placeholder:text-muted-foreground/50 break-words overflow-wrap-anywhere"
                     style={{
                       fontFamily: "inherit",
                       fontSize: "16px",
                       lineHeight: "1.6em",
+                      wordWrap: "break-word",
+                      overflowWrap: "anywhere",
                     }}
                   />
                 </div>
@@ -772,7 +776,7 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
               /* Hub Note - Show only description, no content editing */
               <div className="max-w-4xl mx-auto w-full">
                 <div className="p-6 bg-muted/20 rounded-lg border border-border/30">
-                  <p className="text-base text-muted-foreground leading-relaxed">
+                  <p className="text-base text-muted-foreground leading-relaxed break-words overflow-wrap-anywhere">
                     {content}
                   </p>
                 </div>
@@ -836,11 +840,13 @@ export default function NoteEditor({ note, onSave, onCreateAtomicNotes, onSelect
                 onChange={handleContentChange}
                 onKeyDown={handleKeyDown}
                 placeholder="Write your note here..."
-                className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 w-full overflow-y-auto"
+                className="flex-1 resize-none border-none focus:ring-0 focus:outline-none p-0 bg-transparent text-base leading-relaxed shadow-none rounded-none outline-none min-h-0 w-full overflow-y-auto break-words overflow-wrap-anywhere"
                 style={{
                   fontFamily: "inherit",
                   fontSize: "16px",
                   lineHeight: "1.5em",
+                  wordWrap: "break-word",
+                  overflowWrap: "anywhere",
                 }}
               />
             )}

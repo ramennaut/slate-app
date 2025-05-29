@@ -147,7 +147,7 @@ export default function HubNoteManager({
                       <button
                         key={note.id}
                         onClick={() => addAtomicNote(note)}
-                        className="w-full text-left p-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded transition-colors"
+                        className="w-full text-left p-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded transition-colors break-words overflow-wrap-anywhere"
                       >
                         {getPreviewText(note.content)}
                       </button>
@@ -180,7 +180,7 @@ export default function HubNoteManager({
           >
             <button
               onClick={() => onSelectNote(note)}
-              className="flex-1 text-left text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="flex-1 text-left text-xs text-muted-foreground hover:text-foreground transition-colors break-words overflow-wrap-anywhere"
             >
               {getPreviewText(note.content)}
             </button>
