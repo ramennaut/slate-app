@@ -431,6 +431,80 @@ export default function Home() {
     }
   };
 
+  const addToExistingStructuredNote = async (selectedAtomicNotes: Note[], existingStructuredNote: Note) => {
+    if (selectedAtomicNotes.length < 1) {
+      console.warn('Need at least 1 atomic note to add to structure note');
+      return;
+    }
+
+    try {
+      // Get the current linked atomic notes
+      const currentLinkedIds = existingStructuredNote.linkedAtomicNoteIds || [];
+      const newAtomicNoteIds = selectedAtomicNotes.map(note => note.id);
+      
+      // Combine existing and new atomic note IDs (avoid duplicates)
+      const combinedLinkedIds = [...new Set([...currentLinkedIds, ...newAtomicNoteIds])];
+
+      // Create content sections for the new atomic notes
+      const newContentSections = selectedAtomicNotes.map((note) => {
+        const refId = note.globalNumber || '?';
+        return `${refId} ${note.content}`;
+      });
+
+      // Find a good place to insert the new content (before the Analysis section if it exists)
+      let updatedContent = existingStructuredNote.content;
+      const analysisSectionRegex = /## Analysis and Connections/i;
+      
+      if (analysisSectionRegex.test(updatedContent)) {
+        // Insert before the Analysis section
+        updatedContent = updatedContent.replace(
+          analysisSectionRegex,
+          `\n\n${newContentSections.join('\n\n')}\n\n## Analysis and Connections`
+        );
+      } else {
+        // Append to the end of the main content
+        const endOfMainContent = updatedContent.indexOf('\n## ');
+        if (endOfMainContent !== -1) {
+          updatedContent = 
+            updatedContent.slice(0, endOfMainContent) + 
+            '\n\n' + newContentSections.join('\n\n') + 
+            updatedContent.slice(endOfMainContent);
+        } else {
+          updatedContent += '\n\n' + newContentSections.join('\n\n');
+        }
+      }
+
+      const updatedStructuredNote: Note = {
+        ...existingStructuredNote,
+        content: updatedContent,
+        linkedAtomicNoteIds: combinedLinkedIds,
+      };
+
+      // Update the structure note in the notes array
+      setNotes(prevNotes => 
+        prevNotes.map(note => 
+          note.id === existingStructuredNote.id ? updatedStructuredNote : note
+        )
+      );
+      
+      // Switch to the Topics tab since structure notes appear there
+      setSidebarActiveTab('hub');
+      
+      // Switch to the updated structure note
+      setActiveNote(updatedStructuredNote);
+      setOpenAtomicNotes([]); // Close flash card view
+      
+      // Close mobile sidebar if open
+      if (isMobile) {
+        setIsMobileSidebarOpen(false);
+      }
+
+    } catch (error) {
+      console.error("Error adding atomic notes to existing structure note:", error);
+      // Handle error (e.g., show a notification to the user)
+    }
+  };
+
   const createStructuredNoteFromAtomicNotes = async (selectedAtomicNotes: Note[]) => {
     if (selectedAtomicNotes.length === 0) {
       console.warn('Need at least 1 atomic note to create a structure note');
@@ -800,6 +874,11 @@ The train of thought above suggests several key ideas worth exploring further...
         note.isSummary && (note.noteType === 'hub' || !note.noteType)
       );
 
+      // Get existing structure notes for the dropdown
+      const existingStructuredNotes = notes.filter(note => 
+        note.noteType === 'structured'
+      );
+
       return (
         <AtomicCardsView
           notes={openAtomicNotes}
@@ -810,6 +889,7 @@ The train of thought above suggests several key ideas worth exploring further...
           onCreateTopic={createTopicFromAtomicNotes}
           onAddToExistingHub={addToExistingHub}
           onCreateStructuredNote={createStructuredNoteFromAtomicNotes}
+          onAddToExistingStructuredNote={addToExistingStructuredNote}
           onDeleteNote={deleteNote}
           onCreateAtomicNotes={createAtomicNotes}
           searchAnswer={searchAnswerData?.answer}
@@ -818,6 +898,7 @@ The train of thought above suggests several key ideas worth exploring further...
           isRefreshingAnswer={isRefreshingAnswer}
           onCloseAnswer={handleCloseAnswer}
           existingHubNotes={existingHubNotes}
+          existingStructuredNotes={existingStructuredNotes}
         />
       );
     }

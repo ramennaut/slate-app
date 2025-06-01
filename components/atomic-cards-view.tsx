@@ -18,6 +18,7 @@ interface AtomicCardsViewProps {
   onCreateTopic?: (selectedAtomicNotes: Note[]) => Promise<void>;
   onAddToExistingHub?: (selectedAtomicNotes: Note[], hubNote: Note) => Promise<void>;
   onCreateStructuredNote?: (selectedAtomicNotes: Note[]) => void;
+  onAddToExistingStructuredNote?: (selectedAtomicNotes: Note[], structuredNote: Note) => Promise<void>;
   onDeleteNote?: (noteId: string) => void;
   onCreateAtomicNotes?: (atomicNotes: Array<{ title: string; content: string }>) => void;
   searchAnswer?: string;
@@ -26,6 +27,7 @@ interface AtomicCardsViewProps {
   isRefreshingAnswer?: boolean;
   onCloseAnswer?: () => void;
   existingHubNotes?: Note[];
+  existingStructuredNotes?: Note[];
 }
 
 interface CardState {
@@ -275,6 +277,7 @@ export default function AtomicCardsView({
   onCreateTopic,
   onAddToExistingHub,
   onCreateStructuredNote,
+  onAddToExistingStructuredNote,
   onDeleteNote,
   onCreateAtomicNotes,
   searchAnswer,
@@ -283,6 +286,7 @@ export default function AtomicCardsView({
   isRefreshingAnswer,
   onCloseAnswer,
   existingHubNotes,
+  existingStructuredNotes,
 }: AtomicCardsViewProps) {
   const [cardStates, setCardStates] = useState<CardState>({});
   const [isCreatingTopic, setIsCreatingTopic] = useState(false);
@@ -299,6 +303,11 @@ export default function AtomicCardsView({
   const [showHubDropdown, setShowHubDropdown] = useState(false);
   const hubDropdownRef = useRef<HTMLButtonElement>(null);
   const hubPopoverRef = useRef<HTMLDivElement>(null);
+  
+  // Structure note dropdown state
+  const [showStructureDropdown, setShowStructureDropdown] = useState(false);
+  const structureDropdownRef = useRef<HTMLButtonElement>(null);
+  const structurePopoverRef = useRef<HTMLDivElement>(null);
   
   // Text selection and context menu state
   const [selectedText, setSelectedText] = useState("");
@@ -365,16 +374,25 @@ export default function AtomicCardsView({
       ) {
         setShowHubDropdown(false);
       }
+
+      if (
+        structurePopoverRef.current && 
+        !structurePopoverRef.current.contains(event.target as Node) &&
+        structureDropdownRef.current &&
+        !structureDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowStructureDropdown(false);
+      }
     };
 
-    if (showAddNotes || showHubDropdown) {
+    if (showAddNotes || showHubDropdown || showStructureDropdown) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [showAddNotes, showHubDropdown]);
+  }, [showAddNotes, showHubDropdown, showStructureDropdown]);
 
   // Add atomic note to flash card view
   const addAtomicNoteToCards = (atomicNote: Note) => {
@@ -422,18 +440,33 @@ export default function AtomicCardsView({
     }
   };
 
-  const handleAddToExistingHub = async (hubNote: Note) => {
+  const handleAddToExistingHub = (hubNote: Note) => {
     if (!onAddToExistingHub || notes.length < 1) return;
     
     setIsCreatingTopic(true);
     setShowHubDropdown(false);
     
     try {
-      await onAddToExistingHub(notes, hubNote);
+      onAddToExistingHub(notes, hubNote);
     } catch (error) {
       console.error('Failed to add to existing hub:', error);
     } finally {
       setIsCreatingTopic(false);
+    }
+  };
+
+  const handleAddToExistingStructuredNote = (structuredNote: Note) => {
+    if (!onAddToExistingStructuredNote || notes.length < 1) return;
+    
+    setIsCreatingStructured(true);
+    setShowStructureDropdown(false);
+    
+    try {
+      onAddToExistingStructuredNote(notes, structuredNote);
+    } catch (error) {
+      console.error('Failed to add to existing structure note:', error);
+    } finally {
+      setIsCreatingStructured(false);
     }
   };
 
@@ -1035,26 +1068,107 @@ export default function AtomicCardsView({
           )}
           
           {onCreateStructuredNote && (
-            <Button
-              onClick={handleCreateStructuredNote}
-              size="sm"
-              variant="default"
-              className="font-medium shadow-lg hover:shadow-xl transition-shadow"
-              disabled={notes.length === 0 || isCreatingTopic || isCreatingStructured}
-              title="Create a structure note from all notes in this view"
-            >
-              {isCreatingStructured ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Expand this Topic ({notes.length})
-                </>
+            <div className="relative">
+              <Button
+                onClick={() => setShowStructureDropdown(!showStructureDropdown)}
+                size="sm"
+                variant="default"
+                className="font-medium shadow-lg hover:shadow-xl transition-shadow pr-2"
+                disabled={notes.length === 0 || isCreatingTopic || isCreatingStructured}
+                title={notes.length === 0 ? "Need at least 1 note to expand topic" : "Expand these notes into a structure note"}
+                ref={structureDropdownRef}
+              >
+                {isCreatingStructured ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <BookOpen className="h-4 w-4 mr-2" />
+                    Expand this Topic ({notes.length})
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </>
+                )}
+              </Button>
+              
+              {/* Structure Note Options Dropdown */}
+              {showStructureDropdown && !isCreatingTopic && !isCreatingStructured && (
+                <div 
+                  ref={structurePopoverRef}
+                  className="absolute bottom-full right-0 mb-2 w-[320px] max-h-[400px] border border-border rounded-lg bg-background shadow-xl z-50 overflow-hidden"
+                  style={{
+                    maxHeight: 'calc(100vh - 120px)', // Ensure it fits in viewport
+                  }}
+                >
+                  <div className="p-3 border-b border-border/30">
+                    <h4 className="text-sm font-medium text-foreground">
+                      Structure Options
+                    </h4>
+                  </div>
+                  
+                  <div className="flex flex-col max-h-full">
+                    {/* Create New Structure Note - Fixed at top */}
+                    <div className="p-3 border-b border-border/20">
+                      <button
+                        onClick={handleCreateStructuredNote}
+                        className="w-full text-left p-3 text-sm text-foreground bg-background hover:bg-accent rounded-md transition-colors border border-border/30 hover:border-border"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <Plus className="h-4 w-4" />
+                          <span className="font-medium">Create New Structure Note</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Generate a new structure note from all {notes.length} cards
+                        </div>
+                      </button>
+                    </div>
+                    
+                    {/* Scrollable section for existing structure notes */}
+                    <div className="flex-1 overflow-hidden">
+                      {existingStructuredNotes && existingStructuredNotes.length > 0 ? (
+                        <>
+                          <div className="px-3 pt-3 pb-2">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Add to Existing Structure Note
+                            </div>
+                          </div>
+                          <ScrollArea className="flex-1 max-h-[240px]">
+                            <div className="px-3 pb-3 space-y-1">
+                              {existingStructuredNotes.map(structuredNote => (
+                                <button
+                                  key={structuredNote.id}
+                                  onClick={() => handleAddToExistingStructuredNote(structuredNote)}
+                                  className="w-full text-left p-3 text-sm text-foreground hover:bg-accent rounded-md transition-colors border border-transparent hover:border-border/30"
+                                >
+                                  <div className="font-medium text-xs mb-1 line-clamp-1">
+                                    {structuredNote.title || "Untitled Structure Note"}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                                    {structuredNote.content?.substring(0, 60) + (structuredNote.content && structuredNote.content.length > 60 ? "..." : "")}
+                                  </div>
+                                  {structuredNote.linkedAtomicNoteIds && (
+                                    <div className="text-xs text-muted-foreground/70 mt-1">
+                                      {structuredNote.linkedAtomicNoteIds.length} linked notes
+                                    </div>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </>
+                      ) : (
+                        <div className="p-4 text-center">
+                          <div className="text-xs text-muted-foreground">
+                            No existing structure notes. Create your first one above.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
-            </Button>
+            </div>
           )}
         </div>
       )}
