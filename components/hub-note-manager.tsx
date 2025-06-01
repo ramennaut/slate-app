@@ -425,35 +425,37 @@ export default function HubNoteManager({
         </div>
 
         {/* Linked Notes List */}
-        <div className="space-y-2 mb-4">
-          {linkedNotes.map(note => (
-            <div
-              key={note.id}
-              className="flex items-start justify-between p-3 bg-muted/30 rounded-lg border border-border/20"
-            >
-              <button
-                onClick={() => onSelectNote(note)}
-                className="flex-1 text-left text-sm text-muted-foreground hover:text-foreground transition-colors break-words overflow-wrap-anywhere leading-relaxed"
+        <div className="max-h-[50vh] overflow-y-auto">
+          <div className="space-y-2 mb-4">
+            {linkedNotes.map(note => (
+              <div
+                key={note.id}
+                className="flex items-start justify-between p-3 bg-muted/30 rounded-lg border border-border/20"
               >
-                {note.content}
-                {note.globalNumber && (
-                  <div className="text-xs text-muted-foreground mt-2 font-medium">
-                    AN-{note.globalNumber}
-                  </div>
-                )}
-              </button>
-              <Button
-                onClick={() => removeAtomicNote(note.id)}
-                size="sm"
-                variant="ghost"
-                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-3 mt-1 flex-shrink-0"
-                disabled={linkedNotes.length <= 2 || isUpdatingHub}
-                title={linkedNotes.length <= 2 ? "Hub notes must have at least 2 linked notes" : "Remove from hub note"}
-              >
-                <Unlink className="h-3 w-3" />
-              </Button>
-            </div>
-          ))}
+                <button
+                  onClick={() => onSelectNote(note)}
+                  className="flex-1 text-left text-sm text-muted-foreground hover:text-foreground transition-colors break-words overflow-wrap-anywhere leading-relaxed"
+                >
+                  {note.content}
+                  {note.globalNumber && (
+                    <div className="text-xs text-muted-foreground mt-2 font-medium">
+                      AN-{note.globalNumber}
+                    </div>
+                  )}
+                </button>
+                <Button
+                  onClick={() => removeAtomicNote(note.id)}
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive ml-3 mt-1 flex-shrink-0"
+                  disabled={linkedNotes.length <= 2 || isUpdatingHub}
+                  title={linkedNotes.length <= 2 ? "Hub notes must have at least 2 linked notes" : "Remove from hub note"}
+                >
+                  <Unlink className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>

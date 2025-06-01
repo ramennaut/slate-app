@@ -35,6 +35,7 @@ export default function Home() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [sidebarActiveTab, setSidebarActiveTab] = useState<'notes' | 'hub'>('notes');
   const [searchAnswerData, setSearchAnswerData] = useState<{
     answer: string;
     question: string;
@@ -99,6 +100,14 @@ export default function Home() {
     };
     setNotes([newNote, ...notes]);
     setActiveNote(newNote);
+    
+    // Clear atomic cards and search data to ensure new note shows immediately
+    setOpenAtomicNotes([]);
+    setSearchAnswerData(null);
+    
+    // Switch to Notes tab since new regular notes appear there
+    setSidebarActiveTab('notes');
+    
     if (isMobile) {
       setIsMobileSidebarOpen(false); // Close mobile sidebar to show editor
     }
@@ -139,31 +148,119 @@ export default function Home() {
   };
 
   const deleteNote = (id: string) => {
-    setNotes(notes.filter(note => note.id !== id));
+    // Find the note being deleted and its position
+    const noteIndex = notes.findIndex(note => note.id === id);
     
-    // If this was the active note, clear it and any open atomic cards
-    if (activeNote && activeNote.id === id) {
+    // Filter out the deleted note
+    const updatedNotes = notes.filter(note => note.id !== id);
+    setNotes(updatedNotes);
+    
+    // If this was the active note, select the next one intelligently
+    if (activeNote && activeNote.id === id && updatedNotes.length > 0) {
+      let nextNote: Note | null = null;
+      
+      // Try to select the next note in the same position, or the one before if we're at the end
+      if (noteIndex < updatedNotes.length) {
+        nextNote = updatedNotes[noteIndex];
+      } else if (noteIndex > 0) {
+        nextNote = updatedNotes[noteIndex - 1];
+      } else {
+        nextNote = updatedNotes[0];
+      }
+      
+      // If we found a suitable next note, select it
+      if (nextNote) {
+        setActiveNote(nextNote);
+        
+        // If it's an atomic note, add it to flash card view
+        if (nextNote.isAtomic) {
+          setOpenAtomicNotes(prev => {
+            const isAlreadyOpen = prev.some(openNote => openNote.id === nextNote!.id);
+            if (isAlreadyOpen) {
+              return prev;
+            }
+            return [...prev, nextNote!];
+          });
+        } else {
+          // For regular notes, clear atomic cards
+          setOpenAtomicNotes([]);
+          setSearchAnswerData(null);
+        }
+        
+        // If we're on mobile, keep the sidebar closed to show the editor
+        if (isMobile) {
+          setIsMobileSidebarOpen(false);
+        }
+      }
+    } else if (activeNote && activeNote.id === id) {
+      // No notes left or no suitable next note
       setActiveNote(null);
+      setOpenAtomicNotes([]);
+      setSearchAnswerData(null);
     }
     
     // Remove from open atomic cards if it's there
     setOpenAtomicNotes(prev => prev.filter(note => note.id !== id));
     
-    console.log(`Note deleted: ${id}`);
+    console.log(`Note deleted: ${id}${updatedNotes.length > 0 ? ', selected next note' : ', no notes remaining'}`);
   };
 
   const deleteMultipleNotes = (ids: string[]) => {
-    setNotes(notes.filter(note => !ids.includes(note.id)));
+    // Find the position of the first deleted note (for smart selection)
+    const firstDeletedIndex = Math.min(...ids.map(id => notes.findIndex(note => note.id === id)));
     
-    // If the active note is being deleted, clear it
-    if (activeNote && ids.includes(activeNote.id)) {
+    // Filter out deleted notes
+    const updatedNotes = notes.filter(note => !ids.includes(note.id));
+    setNotes(updatedNotes);
+    
+    // If the active note is being deleted, select the next one intelligently
+    if (activeNote && ids.includes(activeNote.id) && updatedNotes.length > 0) {
+      let nextNote: Note | null = null;
+      
+      // Try to select the next note in the same position as the first deleted note
+      if (firstDeletedIndex < updatedNotes.length) {
+        nextNote = updatedNotes[firstDeletedIndex];
+      } else if (firstDeletedIndex > 0) {
+        nextNote = updatedNotes[firstDeletedIndex - 1];
+      } else {
+        nextNote = updatedNotes[0];
+      }
+      
+      // If we found a suitable next note, select it
+      if (nextNote) {
+        setActiveNote(nextNote);
+        
+        // If it's an atomic note, add it to flash card view
+        if (nextNote.isAtomic) {
+          setOpenAtomicNotes(prev => {
+            const isAlreadyOpen = prev.some(openNote => openNote.id === nextNote!.id);
+            if (isAlreadyOpen) {
+              return prev;
+            }
+            return [...prev, nextNote!];
+          });
+        } else {
+          // For regular notes, clear atomic cards
+          setOpenAtomicNotes([]);
+          setSearchAnswerData(null);
+        }
+        
+        // If we're on mobile, keep the sidebar closed to show the editor
+        if (isMobile) {
+          setIsMobileSidebarOpen(false);
+        }
+      }
+    } else if (activeNote && ids.includes(activeNote.id)) {
+      // No notes left or no suitable next note
       setActiveNote(null);
+      setOpenAtomicNotes([]);
+      setSearchAnswerData(null);
     }
     
     // Remove any deleted notes from open atomic cards
     setOpenAtomicNotes(prev => prev.filter(note => !ids.includes(note.id)));
     
-    console.log(`Deleted ${ids.length} notes:`, ids);
+    console.log(`Deleted ${ids.length} notes${updatedNotes.length > 0 ? ', selected next note' : ', no notes remaining'}:`, ids);
   };
 
   const createAtomicNotes = (atomicNotes: Array<{ title: string; content: string }>) => {
@@ -259,6 +356,9 @@ export default function Home() {
       // Add the new hub note
       setNotes([hubNote, ...notes]);
       
+      // Switch to the Topics tab since hub notes appear there
+      setSidebarActiveTab('hub');
+      
       // Switch to the new hub note
       setActiveNote(hubNote);
       setOpenAtomicNotes([]); // Close flash card view
@@ -270,6 +370,63 @@ export default function Home() {
 
     } catch (error) {
       console.error("Error creating topic from atomic notes:", error);
+      // Handle error (e.g., show a notification to the user)
+    }
+  };
+
+  const addToExistingHub = async (selectedAtomicNotes: Note[], existingHub: Note) => {
+    if (selectedAtomicNotes.length < 1) {
+      console.warn('Need at least 1 atomic note to add to hub');
+      return;
+    }
+
+    try {
+      // Get the current linked atomic notes
+      const currentLinkedIds = existingHub.linkedAtomicNoteIds || [];
+      const newAtomicNoteIds = selectedAtomicNotes.map(note => note.id);
+      
+      // Combine existing and new atomic note IDs (avoid duplicates)
+      const combinedLinkedIds = [...new Set([...currentLinkedIds, ...newAtomicNoteIds])];
+      
+      // Get all atomic notes that will be linked
+      const allLinkedNotes = notes.filter(note => 
+        note.isAtomic && combinedLinkedIds.includes(note.id)
+      );
+
+      // Generate new hub content based on all linked atomic notes
+      const hubContent = await generateHubNoteContent(
+        allLinkedNotes.map(note => ({ content: note.content }))
+      );
+
+      const updatedHub: Note = {
+        ...existingHub,
+        title: hubContent.title,
+        content: hubContent.description,
+        linkedAtomicNoteIds: combinedLinkedIds,
+        hubTheme: hubContent.title,
+      };
+
+      // Update the hub note in the notes array
+      setNotes(prevNotes => 
+        prevNotes.map(note => 
+          note.id === existingHub.id ? updatedHub : note
+        )
+      );
+      
+      // Switch to the Topics tab since hub notes appear there
+      setSidebarActiveTab('hub');
+      
+      // Switch to the updated hub note
+      setActiveNote(updatedHub);
+      setOpenAtomicNotes([]); // Close flash card view
+      
+      // Close mobile sidebar if open
+      if (isMobile) {
+        setIsMobileSidebarOpen(false);
+      }
+
+    } catch (error) {
+      console.error("Error adding atomic notes to existing hub:", error);
       // Handle error (e.g., show a notification to the user)
     }
   };
@@ -333,6 +490,9 @@ The relationships between these ideas point toward several areas for further exp
 
       // Add the new structured note
       setNotes([structuredNote, ...notes]);
+      
+      // Switch to the Topics tab since structured notes appear there
+      setSidebarActiveTab('hub');
       
       // Switch to the new structured note
       setActiveNote(structuredNote);
@@ -461,6 +621,9 @@ This train of thought raises several important questions:
         // Add the new structured note
         setNotes([structuredNote, ...notes]);
         
+        // Switch to the Topics tab since structured notes appear there
+        setSidebarActiveTab('hub');
+        
         // Switch to the new structured note
         setActiveNote(structuredNote);
         
@@ -502,6 +665,10 @@ The train of thought above suggests several key ideas worth exploring further...
         };
 
         setNotes([structuredNote, ...notes]);
+        
+        // Switch to the Topics tab since structured notes appear there
+        setSidebarActiveTab('hub');
+        
         setActiveNote(structuredNote);
         
         if (isMobile) {
@@ -628,6 +795,11 @@ The train of thought above suggests several key ideas worth exploring further...
 
     // Show search results or multi-card view if we have search data OR atomic notes are open
     if (searchAnswerData || openAtomicNotes.length > 0) {
+      // Get existing hub notes for the dropdown
+      const existingHubNotes = notes.filter(note => 
+        note.isSummary && (note.noteType === 'hub' || !note.noteType)
+      );
+
       return (
         <AtomicCardsView
           notes={openAtomicNotes}
@@ -636,6 +808,7 @@ The train of thought above suggests several key ideas worth exploring further...
           onSelectNote={selectNote}
           onCloseCard={closeAtomicCard}
           onCreateTopic={createTopicFromAtomicNotes}
+          onAddToExistingHub={addToExistingHub}
           onCreateStructuredNote={createStructuredNoteFromAtomicNotes}
           onDeleteNote={deleteNote}
           onCreateAtomicNotes={createAtomicNotes}
@@ -644,6 +817,7 @@ The train of thought above suggests several key ideas worth exploring further...
           onRefreshAnswer={handleRefreshAnswer}
           isRefreshingAnswer={isRefreshingAnswer}
           onCloseAnswer={handleCloseAnswer}
+          existingHubNotes={existingHubNotes}
         />
       );
     }
@@ -711,6 +885,8 @@ The train of thought above suggests several key ideas worth exploring further...
             isCollapsed={isMobile ? !isMobileSidebarOpen : isSidebarCollapsed}
             toggleSidebar={handleToggleSidebar}
             isMobile={isMobile}
+            activeTab={sidebarActiveTab}
+            onTabChange={setSidebarActiveTab}
           />
         </div>
 
