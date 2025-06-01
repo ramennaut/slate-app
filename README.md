@@ -19,7 +19,7 @@ Slate is a minimal, AI-powered note system built with Next.js and TypeScript. It
 ## Features
 
 - **AI-Powered Atomic Note Generation**: Break down dense text into self-contained, single-idea notes
-- **Semantic Linking** *: Auto-link related notes by meaning, not just keywords or tags
+- **Semantic Linking**: Auto-link related notes by meaning, not just keywords or tags
 - **Smart Lists**: Intelligent bullet/numbered list creation and editing
 - **Seamless Auto-Save**: Your writing is always preserved in real time
 - **Minimal, Distraction-Free Interface**: Clean UI designed for deep thinking
