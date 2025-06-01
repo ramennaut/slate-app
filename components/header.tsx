@@ -2,6 +2,7 @@ import { Button } from "./ui/button";
 import { Plus, Menu, Search, X, MessageCircle } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Note } from "@/lib/types";
+import Image from "next/image";
 
 interface HeaderProps {
   createNewNote: () => void;
@@ -107,14 +108,15 @@ export default function Header({
                 <Menu className="h-5 w-5" />
               </Button>
               <div className="flex-1 flex justify-center items-center space-x-2">
-                <div className="w-7 h-7 bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg flex items-center justify-center shadow-sm">
-                  <div className="flex items-center">
-                    <div className="w-2 h-2 border-2 border-white transform rotate-45 -mr-0.5"></div>
-                    <div className="w-2 h-2 border-2 border-white transform rotate-45"></div>
-                  </div>
-                </div>
-                <h1 className="text-xl font-semibold tracking-tight text-foreground">
-                  Slate
+                <Image 
+                  src="/slate.svg" 
+                  alt="Slate Logo" 
+                  width={32}
+                  height={32}
+                  className="w-8 h-8"
+                />
+                <h1 className="text-xl tracking-tight text-foreground" style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}>
+                  slate notes
                 </h1>
               </div>
               <div className="flex items-center gap-1">
@@ -142,14 +144,15 @@ export default function Header({
           ) : (
             <>
               <div className="flex items-center space-x-2 sm:space-x-4">
-                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-slate-800 to-slate-900 rounded-lg sm:rounded-xl flex items-center justify-center shadow-sm">
-                  <div className="flex items-center">
-                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 border-2 border-white transform rotate-45 -mr-0.5 sm:-mr-1"></div>
-                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 border-2 border-white transform rotate-45"></div>
-                  </div>
-                </div>
-                <h1 className="text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight text-foreground">
-                  Slate
+                <Image 
+                  src="/slate.svg" 
+                  alt="Slate Logo" 
+                  width={36}
+                  height={36}
+                  className="w-8 h-8 sm:w-9 sm:h-9"
+                />
+                <h1 className="text-xl sm:text-2xl md:text-3xl tracking-tight text-foreground" style={{ fontFamily: "'Atkinson Hyperlegible', sans-serif" }}>
+                  slate notes
                 </h1>
               </div>
               
