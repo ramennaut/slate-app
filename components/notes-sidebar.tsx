@@ -24,6 +24,8 @@ interface NotesSidebarProps {
   isCollapsed: boolean;
   toggleSidebar: () => void;
   isMobile: boolean;
+  activeTab?: 'notes' | 'hub';
+  onTabChange?: (tab: 'notes' | 'hub') => void;
 }
 
 export default function NotesSidebar({
@@ -36,9 +38,24 @@ export default function NotesSidebar({
   isCollapsed,
   toggleSidebar,
   isMobile,
+  activeTab,
+  onTabChange,
 }: NotesSidebarProps) {
   // State for active tab
-  const [activeTab, setActiveTab] = useState<'notes' | 'hub'>('notes');
+  const [activeTabState, setActiveTabState] = useState<'notes' | 'hub'>('notes');
+  
+  // Use external activeTab if provided, otherwise use internal state
+  const currentActiveTab = activeTab ?? activeTabState;
+  
+  // Helper function to handle tab changes
+  const handleTabChange = (tab: 'notes' | 'hub') => {
+    if (activeTab === undefined) {
+      // If no external control, update internal state
+      setActiveTabState(tab);
+    }
+    // Call the callback if provided
+    onTabChange?.(tab);
+  };
   
   // State for collapsed sections within tabs
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
@@ -382,9 +399,9 @@ export default function NotesSidebar({
       {!isCollapsed && (
         <div className="flex border-b border-sidebar-border/30 bg-sidebar">
           <button
-            onClick={() => setActiveTab('notes')}
+            onClick={() => handleTabChange('notes')}
             className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
-              activeTab === 'notes'
+              currentActiveTab === 'notes'
                 ? 'text-sidebar-primary border-b-2 border-sidebar-primary bg-sidebar-accent/30'
                 : 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/20'
             }`}
@@ -395,9 +412,9 @@ export default function NotesSidebar({
             </span>
           </button>
           <button
-            onClick={() => setActiveTab('hub')}
+            onClick={() => handleTabChange('hub')}
             className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${
-              activeTab === 'hub'
+              currentActiveTab === 'hub'
                 ? 'text-sidebar-primary border-b-2 border-sidebar-primary bg-sidebar-accent/30'
                 : 'text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/20'
             }`}
@@ -426,7 +443,7 @@ export default function NotesSidebar({
         ) :
           <ScrollArea className="h-full w-full">
             <div className="p-2 space-y-4">
-              {activeTab === 'notes' ? (
+              {currentActiveTab === 'notes' ? (
                 <>
                   {/* Source Notes Section */}
                   {sourceNotes.length > 0 && (

@@ -35,6 +35,7 @@ export default function Home() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [sidebarActiveTab, setSidebarActiveTab] = useState<'notes' | 'hub'>('notes');
   const [searchAnswerData, setSearchAnswerData] = useState<{
     answer: string;
     question: string;
@@ -99,6 +100,14 @@ export default function Home() {
     };
     setNotes([newNote, ...notes]);
     setActiveNote(newNote);
+    
+    // Clear atomic cards and search data to ensure new note shows immediately
+    setOpenAtomicNotes([]);
+    setSearchAnswerData(null);
+    
+    // Switch to Notes tab since new regular notes appear there
+    setSidebarActiveTab('notes');
+    
     if (isMobile) {
       setIsMobileSidebarOpen(false); // Close mobile sidebar to show editor
     }
@@ -259,6 +268,9 @@ export default function Home() {
       // Add the new hub note
       setNotes([hubNote, ...notes]);
       
+      // Switch to the Topics tab since hub notes appear there
+      setSidebarActiveTab('hub');
+      
       // Switch to the new hub note
       setActiveNote(hubNote);
       setOpenAtomicNotes([]); // Close flash card view
@@ -333,6 +345,9 @@ The relationships between these ideas point toward several areas for further exp
 
       // Add the new structured note
       setNotes([structuredNote, ...notes]);
+      
+      // Switch to the Topics tab since structured notes appear there
+      setSidebarActiveTab('hub');
       
       // Switch to the new structured note
       setActiveNote(structuredNote);
@@ -461,6 +476,9 @@ This train of thought raises several important questions:
         // Add the new structured note
         setNotes([structuredNote, ...notes]);
         
+        // Switch to the Topics tab since structured notes appear there
+        setSidebarActiveTab('hub');
+        
         // Switch to the new structured note
         setActiveNote(structuredNote);
         
@@ -502,6 +520,10 @@ The train of thought above suggests several key ideas worth exploring further...
         };
 
         setNotes([structuredNote, ...notes]);
+        
+        // Switch to the Topics tab since structured notes appear there
+        setSidebarActiveTab('hub');
+        
         setActiveNote(structuredNote);
         
         if (isMobile) {
@@ -711,6 +733,8 @@ The train of thought above suggests several key ideas worth exploring further...
             isCollapsed={isMobile ? !isMobileSidebarOpen : isSidebarCollapsed}
             toggleSidebar={handleToggleSidebar}
             isMobile={isMobile}
+            activeTab={sidebarActiveTab}
+            onTabChange={setSidebarActiveTab}
           />
         </div>
 
