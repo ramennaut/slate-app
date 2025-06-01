@@ -46,75 +46,156 @@ interface SearchAnswerDisplayProps {
 function SearchAnswerDisplay({ answer, question, noteCount, onNoteClick, onRefresh, isRefreshing, onClose }: SearchAnswerDisplayProps) {
   // Component to render markdown with clickable note references
   const MarkdownWithNoteRefs = ({ text }: { text: string }) => {
-    return (
-      <ReactMarkdown 
-        remarkPlugins={[remarkGfm]}
-        components={{
-          // Custom text renderer to handle AN-X references
-          text: ({ children }) => {
-            const textContent = String(children);
-            const parts = textContent.split(/(AN-\d+)/g);
+    const markdownRef = useRef<HTMLDivElement>(null);
+    
+    useEffect(() => {
+      if (!markdownRef.current) return;
+      
+      // Find all text nodes and process citations
+      const processTextNodes = (element: HTMLElement) => {
+        const walker = document.createTreeWalker(
+          element,
+          NodeFilter.SHOW_TEXT,
+          null
+        );
+        
+        const textNodes: Text[] = [];
+        let node: Text | null;
+        
+        while ((node = walker.nextNode() as Text | null)) {
+          if (node.textContent && node.textContent.includes('AN-')) {
+            textNodes.push(node);
+          }
+        }
+        
+        // Process each text node that contains citations
+        textNodes.forEach(textNode => {
+          const parent = textNode.parentNode;
+          if (!parent) return;
+          
+          const text = textNode.textContent || '';
+          const citationRegex = /(\([^)]*AN-\d+[^)]*\)|AN-\d+)/g;
+          
+          if (!text.match(citationRegex)) return;
+          
+          // Create document fragment to hold new nodes
+          const fragment = document.createDocumentFragment();
+          let lastIndex = 0;
+          let match: RegExpExecArray | null;
+          
+          while ((match = citationRegex.exec(text)) !== null) {
+            // Add text before citation
+            if (match.index > lastIndex) {
+              fragment.appendChild(document.createTextNode(text.substring(lastIndex, match.index)));
+            }
             
-            return (
-              <>
-                {parts.map((part, index) => {
-                  if (part.match(/^AN-\d+$/)) {
-                    return (
-                      <button
-                        key={index}
-                        className="text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary/60 transition-colors cursor-pointer"
-                        onClick={() => onNoteClick(part)}
-                      >
-                        {part}
-                      </button>
-                    );
-                  }
-                  return <span key={index}>{part}</span>;
-                })}
-              </>
-            );
-          },
-          // Style other markdown elements properly
-          p: ({ children }) => (
-            <p className="mb-3 last:mb-0">{children}</p>
-          ),
-          strong: ({ children }) => (
-            <strong className="font-semibold">{children}</strong>
-          ),
-          em: ({ children }) => (
-            <em className="italic">{children}</em>
-          ),
-          code: ({ children }) => (
-            <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">{children}</code>
-          ),
-          ul: ({ children }) => (
-            <ul className="list-disc list-outside mb-3 space-y-1 ml-6">{children}</ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="list-decimal list-outside mb-3 space-y-1 ml-6">{children}</ol>
-          ),
-          li: ({ children }) => (
-            <li className="leading-relaxed pl-2">{children}</li>
-          ),
-          h1: ({ children }) => (
-            <h1 className="text-lg font-bold mb-3 mt-4 first:mt-0">{children}</h1>
-          ),
-          h2: ({ children }) => (
-            <h2 className="text-md font-bold mb-2 mt-3 first:mt-0">{children}</h2>
-          ),
-          h3: ({ children }) => (
-            <h3 className="text-sm font-bold mb-2 mt-2 first:mt-0">{children}</h3>
-          ),
-          blockquote: ({ children }) => (
-            <blockquote className="border-l-4 border-primary/30 pl-4 italic mb-3 mt-3">{children}</blockquote>
-          ),
-          pre: ({ children }) => (
-            <pre className="bg-muted p-3 rounded-lg overflow-x-auto text-xs font-mono mb-3 mt-3">{children}</pre>
-          ),
-        }}
-      >
-        {text}
-      </ReactMarkdown>
+            const citation = match[1];
+            
+            // Handle parenthesized groups with multiple citations
+            if (citation.startsWith('(') && citation.endsWith(')')) {
+              fragment.appendChild(document.createTextNode('('));
+              
+              const inner = citation.slice(1, -1);
+              const innerRegex = /(AN-\d+)/g;
+              let innerLastIndex = 0;
+              let innerMatch: RegExpExecArray | null;
+              
+              while ((innerMatch = innerRegex.exec(inner)) !== null) {
+                // Add text before citation
+                if (innerMatch.index > innerLastIndex) {
+                  fragment.appendChild(document.createTextNode(inner.substring(innerLastIndex, innerMatch.index)));
+                }
+                
+                // Create clickable button for citation
+                const button = document.createElement('button');
+                const citationText = innerMatch[1];
+                button.textContent = citationText;
+                button.className = 'text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary/60 transition-colors cursor-pointer';
+                button.onclick = () => onNoteClick(citationText);
+                fragment.appendChild(button);
+                
+                innerLastIndex = innerMatch.index + innerMatch[0].length;
+              }
+              
+              // Add remaining text
+              if (innerLastIndex < inner.length) {
+                fragment.appendChild(document.createTextNode(inner.substring(innerLastIndex)));
+              }
+              
+              fragment.appendChild(document.createTextNode(')'));
+            } else {
+              // Single citation
+              const button = document.createElement('button');
+              button.textContent = citation;
+              button.className = 'text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary/60 transition-colors cursor-pointer';
+              button.onclick = () => onNoteClick(citation);
+              fragment.appendChild(button);
+            }
+            
+            lastIndex = match.index + match[0].length;
+          }
+          
+          // Add remaining text
+          if (lastIndex < text.length) {
+            fragment.appendChild(document.createTextNode(text.substring(lastIndex)));
+          }
+          
+          // Replace the original text node with our processed fragment
+          parent.replaceChild(fragment, textNode);
+        });
+      };
+      
+      // Process the rendered markdown
+      processTextNodes(markdownRef.current);
+    }, [text, onNoteClick]);
+
+    return (
+      <div ref={markdownRef}>
+        <ReactMarkdown 
+          remarkPlugins={[remarkGfm]}
+          components={{
+            // Style other markdown elements properly
+            p: ({ children }) => (
+              <p className="mb-3 last:mb-0">{children}</p>
+            ),
+            strong: ({ children }) => (
+              <strong className="font-semibold">{children}</strong>
+            ),
+            em: ({ children }) => (
+              <em className="italic">{children}</em>
+            ),
+            code: ({ children }) => (
+              <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono">{children}</code>
+            ),
+            ul: ({ children }) => (
+              <ul className="list-disc list-outside mb-3 space-y-1 ml-6">{children}</ul>
+            ),
+            ol: ({ children }) => (
+              <ol className="list-decimal list-outside mb-3 space-y-1 ml-6">{children}</ol>
+            ),
+            li: ({ children }) => (
+              <li className="leading-relaxed pl-2">{children}</li>
+            ),
+            h1: ({ children }) => (
+              <h1 className="text-lg font-bold mb-3 mt-4 first:mt-0">{children}</h1>
+            ),
+            h2: ({ children }) => (
+              <h2 className="text-md font-bold mb-2 mt-3 first:mt-0">{children}</h2>
+            ),
+            h3: ({ children }) => (
+              <h3 className="text-sm font-bold mb-2 mt-2 first:mt-0">{children}</h3>
+            ),
+            blockquote: ({ children }) => (
+              <blockquote className="border-l-4 border-primary/30 pl-4 italic mb-3 mt-3">{children}</blockquote>
+            ),
+            pre: ({ children }) => (
+              <pre className="bg-muted p-3 rounded-lg overflow-x-auto text-xs font-mono mb-3 mt-3">{children}</pre>
+            ),
+          }}
+        >
+          {text}
+        </ReactMarkdown>
+      </div>
     );
   };
 
@@ -415,7 +496,8 @@ export default function AtomicCardsView({
 
   // Function to handle note reference clicks
   const handleNoteClick = useCallback((noteReference: string) => {
-    const match = noteReference.match(/^AN-(\d+)$/);
+    // Updated regex to extract number from both AN-X and (AN-X) formats
+    const match = noteReference.match(/\(?AN-(\d+)\)?/);
     if (match) {
       const globalNumber = parseInt(match[1]);
       highlightNoteByNumber(globalNumber);
