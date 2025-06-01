@@ -90,6 +90,7 @@ function SearchAnswerDisplay({ answer, question, noteCount, onNoteClick, onRefre
             }
             
             const citation = match[1];
+            if (!citation) continue; // Safety check
             
             // Handle parenthesized groups with multiple citations
             if (citation.startsWith('(') && citation.endsWith(')')) {
@@ -106,9 +107,11 @@ function SearchAnswerDisplay({ answer, question, noteCount, onNoteClick, onRefre
                   fragment.appendChild(document.createTextNode(inner.substring(innerLastIndex, innerMatch.index)));
                 }
                 
-                // Create clickable button for citation
-                const button = document.createElement('button');
+                // Create clickable button for citation - capture the value immediately
                 const citationText = innerMatch[1];
+                if (!citationText) continue; // Safety check
+                
+                const button = document.createElement('button');
                 button.textContent = citationText;
                 button.className = 'text-primary hover:text-primary/80 font-medium underline decoration-primary/30 hover:decoration-primary/60 transition-colors cursor-pointer';
                 button.onclick = () => onNoteClick(citationText);
@@ -147,7 +150,7 @@ function SearchAnswerDisplay({ answer, question, noteCount, onNoteClick, onRefre
       
       // Process the rendered markdown
       processTextNodes(markdownRef.current);
-    }, [text, onNoteClick]);
+    }, [text]); // Removed onNoteClick from dependencies
 
     return (
       <div ref={markdownRef}>
