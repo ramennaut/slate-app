@@ -23,6 +23,7 @@
 
 # Environment files (can opt-in for committing if needed)
 .env*
+.local
 
 # Vercel
 .vercel
@@ -53,6 +54,7 @@ Desktop.ini
 *.swp
 *.swo
 *~
+.vim/
 
 ## Logs
 logs
