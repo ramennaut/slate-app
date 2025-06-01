@@ -446,9 +446,9 @@ export default function Home() {
       const combinedLinkedIds = [...new Set([...currentLinkedIds, ...newAtomicNoteIds])];
 
       // Create content sections for the new atomic notes
-      const newContentSections = selectedAtomicNotes.map((note) => {
-        const refId = note.globalNumber || '?';
-        return `${refId} ${note.content}`;
+      const contentSections = selectedAtomicNotes.map((note) => {
+        // Just use the atomic note content without citation numbers
+        return note.content;
       });
 
       // Find a good place to insert the new content (before the Analysis section if it exists)
@@ -459,7 +459,7 @@ export default function Home() {
         // Insert before the Analysis section
         updatedContent = updatedContent.replace(
           analysisSectionRegex,
-          `\n\n${newContentSections.join('\n\n')}\n\n## Analysis and Connections`
+          `\n\n${contentSections.join('\n\n')}\n\n## Analysis and Connections`
         );
       } else {
         // Append to the end of the main content
@@ -467,10 +467,10 @@ export default function Home() {
         if (endOfMainContent !== -1) {
           updatedContent = 
             updatedContent.slice(0, endOfMainContent) + 
-            '\n\n' + newContentSections.join('\n\n') + 
+            '\n\n' + contentSections.join('\n\n') + 
             updatedContent.slice(endOfMainContent);
         } else {
-          updatedContent += '\n\n' + newContentSections.join('\n\n');
+          updatedContent += '\n\n' + contentSections.join('\n\n');
         }
       }
 
@@ -513,23 +513,21 @@ export default function Home() {
 
     try {
       // Generate AI title based on atomic note content
-      const generatedTitle = await generateStructureNoteTitle(
+      const rawTitle = await generateStructureNoteTitle(
         selectedAtomicNotes.map(note => ({ content: note.content }))
       );
+      
+      // Clean the title by removing quotation marks
+      const generatedTitle = rawTitle.replace(/^["']|["']$/g, '');
 
       // Create content with reference IDs and integrated prose
       const contentSections = selectedAtomicNotes.map((note) => {
-        // Use the atomic note's global number as reference
-        const refId = note.globalNumber || '?';
-        
-        // Create a paragraph that integrates the atomic note content with reference
-        return `${refId} ${note.content}`;
+        // Just use the atomic note content without citation numbers
+        return note.content;
       });
 
-      // Create a more sophisticated structure note with integrated content
-      const finalContent = `# ${generatedTitle}
-
-${contentSections.join('\n\n')}
+      // Create a more sophisticated structure note with integrated content (no duplicate title)
+      const finalContent = `${contentSections.join('\n\n')}
 
 ## Analysis and Connections
 
@@ -585,13 +583,11 @@ The relationships between these ideas point toward several areas for further exp
       const fallbackTitle = `Structure Note - ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
       
       const contentSections = selectedAtomicNotes.map((note) => {
-        const refId = note.globalNumber || '?';
-        return `${refId} ${note.content}`;
+        // Just use the atomic note content without citation numbers
+        return note.content;
       });
 
-      const finalContent = `# ${fallbackTitle}
-
-${contentSections.join('\n\n')}
+      const finalContent = `${contentSections.join('\n\n')}
 
 ## Analysis and Connections
 
@@ -634,28 +630,35 @@ These insights have practical implications for how we approach...
   const addTrainOfThoughtToStructuredNote = async (hubNote: Note, selectedStructuredNote?: Note) => {
     const trainOfThought = hubNote.content; // The hub note's content is the train of thought
     const hubTitle = hubNote.title || hubNote.hubTheme || "Hub Note Insight";
+    const hubLinkedNoteIds = hubNote.linkedAtomicNoteIds || [];
     
     if (selectedStructuredNote) {
       // Add to existing structured note
       const updatedContent = selectedStructuredNote.content + `\n\n## ${hubTitle}\n\n${trainOfThought}\n\n> **Source:** This insight comes from the hub note "${hubTitle}" which connects multiple atomic notes.\n\n---\n`;
       
+      // Combine existing linked notes with hub note's linked notes (avoid duplicates)
+      const existingLinkedIds = selectedStructuredNote.linkedAtomicNoteIds || [];
+      const combinedLinkedIds = [...new Set([...existingLinkedIds, ...hubLinkedNoteIds])];
+      
       const updatedNote: Note = {
         ...selectedStructuredNote,
         content: updatedContent,
+        linkedAtomicNoteIds: combinedLinkedIds,
       };
       
       setNotes(prev => prev.map(note => note.id === selectedStructuredNote.id ? updatedNote : note));
       setActiveNote(updatedNote);
       
-      console.log(`Added train of thought from "${hubTitle}" to existing structure note "${selectedStructuredNote.title}"`);
+      console.log(`Added train of thought from "${hubTitle}" to existing structure note "${selectedStructuredNote.title}" with ${hubLinkedNoteIds.length} sources`);
     } else {
       // Create new structured note with the train of thought
       try {
-        const generatedTitle = await generateStructureNoteTitle([{ content: trainOfThought }]);
+        const rawTitle = await generateStructureNoteTitle([{ content: trainOfThought }]);
         
-        const finalContent = `# ${generatedTitle}
-
-## ${hubTitle}
+        // Clean the title by removing quotation marks
+        const generatedTitle = rawTitle.replace(/^["']|["']$/g, '');
+        
+        const finalContent = `## ${hubTitle}
 
 ${trainOfThought}
 
@@ -689,7 +692,7 @@ This train of thought raises several important questions:
           content: finalContent,
           createdAt: Date.now(),
           noteType: 'structured',
-          linkedAtomicNoteIds: [], // Start with no linked atomic notes
+          linkedAtomicNoteIds: hubLinkedNoteIds, // Include all sources from the hub note
         };
 
         // Add the new structured note
@@ -706,16 +709,14 @@ This train of thought raises several important questions:
           setIsMobileSidebarOpen(false);
         }
 
-        console.log(`Created new structure note "${generatedTitle}" from train of thought in hub note "${hubTitle}"`);
+        console.log(`Created new structure note "${generatedTitle}" from train of thought in hub note "${hubTitle}" with ${hubLinkedNoteIds.length} sources`);
       } catch (error) {
         console.error('Error creating structure note from train of thought:', error);
         
         // Fallback to simple structure note
         const fallbackTitle = `Structure Note - ${hubTitle}`;
         
-        const finalContent = `# ${fallbackTitle}
-
-## ${hubTitle}
+        const finalContent = `## ${hubTitle}
 
 ${trainOfThought}
 
@@ -735,7 +736,7 @@ The train of thought above suggests several key ideas worth exploring further...
           content: finalContent,
           createdAt: Date.now(),
           noteType: 'structured',
-          linkedAtomicNoteIds: [],
+          linkedAtomicNoteIds: hubLinkedNoteIds, // Include all sources from the hub note
         };
 
         setNotes([structuredNote, ...notes]);
@@ -749,7 +750,7 @@ The train of thought above suggests several key ideas worth exploring further...
           setIsMobileSidebarOpen(false);
         }
 
-        console.log(`Created fallback structure note from train of thought in hub note "${hubTitle}"`);
+        console.log(`Created fallback structure note from train of thought in hub note "${hubTitle}" with ${hubLinkedNoteIds.length} sources`);
       }
     }
   };

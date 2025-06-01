@@ -27,7 +27,7 @@ export default function MarkdownEditor({
   className = "",
   textareaRef
 }: MarkdownEditorProps) {
-  const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit');
+  const [viewMode, setViewMode] = useState<'edit' | 'preview'>('preview');
   const internalTextareaRef = useRef<HTMLTextAreaElement>(null);
   
   // Use provided ref or fallback to internal ref
