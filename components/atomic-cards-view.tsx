@@ -3,10 +3,11 @@
 import { Note } from "@/lib/types";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
-import { ArrowLeft, X, Plus, Trash2, Layers, BookOpen, MessageCircle } from "lucide-react";
+import { ArrowLeft, X, Plus, Trash2, Layers, BookOpen, MessageCircle, Search } from "lucide-react";
 import { generateTermDefinition } from "@/lib/openai";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { ScrollArea } from "./ui/scroll-area";
 
 interface AtomicCardsViewProps {
   notes: Note[];
@@ -284,6 +285,12 @@ export default function AtomicCardsView({
   const [isCreatingStructured, setIsCreatingStructured] = useState(false);
   const [highlightedNoteId, setHighlightedNoteId] = useState<string | null>(null);
   
+  // Add Notes functionality - similar to hub notes
+  const [showAddNotes, setShowAddNotes] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  
   // Text selection and context menu state
   const [selectedText, setSelectedText] = useState("");
   const [showContextMenu, setShowContextMenu] = useState(false);
@@ -293,6 +300,94 @@ export default function AtomicCardsView({
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const textareaRefs = useRef<{[key: string]: HTMLTextAreaElement | null}>({});
   const cardRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
+
+  // Get available atomic notes (not currently shown in flash card view)
+  const openNoteIds = notes.map(note => note.id);
+  const availableAtomicNotes = allNotes.filter(note => 
+    note.isAtomic && !openNoteIds.includes(note.id)
+  );
+
+  // Search functionality for adding notes
+  const getSearchResults = () => {
+    if (!searchQuery.trim()) {
+      return availableAtomicNotes;
+    }
+
+    const query = searchQuery.toLowerCase();
+    
+    return availableAtomicNotes.filter(note => {
+      // Search by content
+      if (note.content.toLowerCase().includes(query)) {
+        return true;
+      }
+      
+      // Search by global number (e.g., "AN-1" or just "1")
+      if (note.globalNumber) {
+        const noteRef = `an-${note.globalNumber}`;
+        if (noteRef.includes(query) || note.globalNumber.toString() === query) {
+          return true;
+        }
+      }
+      
+      return false;
+    });
+  };
+
+  const searchResults = getSearchResults();
+
+  // Close popover when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        popoverRef.current && 
+        !popoverRef.current.contains(event.target as Node) &&
+        addButtonRef.current &&
+        !addButtonRef.current.contains(event.target as Node)
+      ) {
+        setShowAddNotes(false);
+        setSearchQuery("");
+      }
+    };
+
+    if (showAddNotes) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showAddNotes]);
+
+  // Add atomic note to flash card view
+  const addAtomicNoteToCards = (atomicNote: Note) => {
+    // Simply trigger onSelectNote to add it to the flash card view
+    onSelectNote(atomicNote);
+    setShowAddNotes(false);
+    setSearchQuery("");
+  };
+
+  // Helper function to get preview text
+  const getPreviewText = (content: string) => {
+    return content.length > 100 ? content.substring(0, 100) + "..." : content;
+  };
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (contextMenuRef.current && 
+          !contextMenuRef.current.contains(event.target as Node)) {
+        setShowContextMenu(false);
+      }
+    };
+
+    if (showContextMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [showContextMenu]);
 
   const handleCreateTopic = async () => {
     if (!onCreateTopic || notes.length < 1) return;
@@ -456,24 +551,6 @@ export default function AtomicCardsView({
       setActiveTextareaId(null);
     }
   };
-
-  // Close context menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (contextMenuRef.current && 
-          !contextMenuRef.current.contains(event.target as Node)) {
-        setShowContextMenu(false);
-      }
-    };
-
-    if (showContextMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showContextMenu]);
 
   // Function to highlight a note by its global number
   const highlightNoteByNumber = useCallback((globalNumber: number) => {
@@ -695,17 +772,113 @@ export default function AtomicCardsView({
               {notes.length}
             </span>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              notes.forEach(note => onCloseCard(note.id));
-            }}
-            className="text-xs font-medium"
-          >
-            <Trash2 className="h-3 w-3 mr-1" />
-            Clear Cards
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Add Notes Button */}
+            {onCreateAtomicNotes && (
+              <div className="relative">
+                <Button
+                  onClick={() => setShowAddNotes(!showAddNotes)}
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs"
+                  ref={addButtonRef}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Note
+                </Button>
+                
+                {/* Search Popover */}
+                {showAddNotes && (
+                  <div 
+                    ref={popoverRef}
+                    className="absolute top-full right-0 mt-2 w-[500px] border border-border rounded-lg p-4 bg-background shadow-xl z-50"
+                    style={{
+                      maxHeight: 'calc(100vh - 150px)',
+                    }}
+                  >
+                    <h4 className="text-sm font-medium text-foreground mb-3">
+                      Add Atomic Note to Flash Cards
+                    </h4>
+                    
+                    {/* Search Bar */}
+                    <div className="relative mb-3">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <input
+                        type="text"
+                        placeholder="Search by content or reference number (e.g. AN-1)..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 text-sm border border-border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                        autoFocus
+                      />
+                    </div>
+                    
+                    {/* Search Results */}
+                    <ScrollArea className="h-60">
+                      <div className="space-y-2">
+                        {searchResults.length > 0 ? (
+                          <>
+                            {searchQuery.trim() && (
+                              <div className="text-xs text-muted-foreground mb-2 px-1">
+                                {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} found
+                              </div>
+                            )}
+                            {searchResults.map(note => (
+                              <button
+                                key={note.id}
+                                onClick={() => addAtomicNoteToCards(note)}
+                                className="w-full text-left p-3 text-sm text-foreground bg-background hover:bg-accent rounded-md transition-colors border border-transparent hover:border-border"
+                              >
+                                <div className="line-clamp-2 break-words leading-relaxed">
+                                  {getPreviewText(note.content)}
+                                </div>
+                                {note.globalNumber && (
+                                  <div className="text-xs text-muted-foreground mt-2 font-medium">
+                                    AN-{note.globalNumber}
+                                  </div>
+                                )}
+                              </button>
+                            ))}
+                          </>
+                        ) : (
+                          <div className="text-sm text-muted-foreground text-center py-8">
+                            {searchQuery.trim() ? (
+                              <>
+                                <div className="mb-2">No notes found matching &quot;{searchQuery}&quot;</div>
+                                <div className="text-xs">Try searching by content or reference number (e.g. AN-1)</div>
+                              </>
+                            ) : availableAtomicNotes.length === 0 ? (
+                              <>
+                                <div className="mb-2">All atomic notes are already in view</div>
+                                <div className="text-xs">Create more atomic notes to add them here</div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="mb-2">No atomic notes available</div>
+                                <div className="text-xs">Create some atomic notes first to add them to flash cards</div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                notes.forEach(note => onCloseCard(note.id));
+              }}
+              className="text-xs font-medium"
+            >
+              <Trash2 className="h-3 w-3 mr-1" />
+              Clear Cards
+            </Button>
+          </div>
         </div>
         <p className="text-sm text-muted-foreground/80 ml-6">
           {searchAnswer 
