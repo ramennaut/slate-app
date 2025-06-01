@@ -3,7 +3,7 @@
 import { Note } from "@/lib/types";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "./ui/button";
-import { ArrowLeft, X, Plus, Trash2, Layers, BookOpen, MessageCircle, Search } from "lucide-react";
+import { ArrowLeft, X, Plus, Trash2, Layers, BookOpen, MessageCircle, Search, ChevronDown } from "lucide-react";
 import { generateTermDefinition } from "@/lib/openai";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -16,6 +16,7 @@ interface AtomicCardsViewProps {
   onSelectNote: (note: Note) => void;
   onCloseCard: (noteId: string) => void;
   onCreateTopic?: (selectedAtomicNotes: Note[]) => Promise<void>;
+  onAddToExistingHub?: (selectedAtomicNotes: Note[], hubNote: Note) => Promise<void>;
   onCreateStructuredNote?: (selectedAtomicNotes: Note[]) => void;
   onDeleteNote?: (noteId: string) => void;
   onCreateAtomicNotes?: (atomicNotes: Array<{ title: string; content: string }>) => void;
@@ -24,6 +25,7 @@ interface AtomicCardsViewProps {
   onRefreshAnswer?: () => void;
   isRefreshingAnswer?: boolean;
   onCloseAnswer?: () => void;
+  existingHubNotes?: Note[];
 }
 
 interface CardState {
@@ -271,6 +273,7 @@ export default function AtomicCardsView({
   onSelectNote,
   onCloseCard,
   onCreateTopic,
+  onAddToExistingHub,
   onCreateStructuredNote,
   onDeleteNote,
   onCreateAtomicNotes,
@@ -279,6 +282,7 @@ export default function AtomicCardsView({
   onRefreshAnswer,
   isRefreshingAnswer,
   onCloseAnswer,
+  existingHubNotes,
 }: AtomicCardsViewProps) {
   const [cardStates, setCardStates] = useState<CardState>({});
   const [isCreatingTopic, setIsCreatingTopic] = useState(false);
@@ -290,6 +294,11 @@ export default function AtomicCardsView({
   const [searchQuery, setSearchQuery] = useState("");
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  
+  // Hub dropdown state
+  const [showHubDropdown, setShowHubDropdown] = useState(false);
+  const hubDropdownRef = useRef<HTMLButtonElement>(null);
+  const hubPopoverRef = useRef<HTMLDivElement>(null);
   
   // Text selection and context menu state
   const [selectedText, setSelectedText] = useState("");
@@ -347,16 +356,25 @@ export default function AtomicCardsView({
         setShowAddNotes(false);
         setSearchQuery("");
       }
+      
+      if (
+        hubPopoverRef.current && 
+        !hubPopoverRef.current.contains(event.target as Node) &&
+        hubDropdownRef.current &&
+        !hubDropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowHubDropdown(false);
+      }
     };
 
-    if (showAddNotes) {
+    if (showAddNotes || showHubDropdown) {
       document.addEventListener("mousedown", handleClickOutside);
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [showAddNotes]);
+  }, [showAddNotes, showHubDropdown]);
 
   // Add atomic note to flash card view
   const addAtomicNoteToCards = (atomicNote: Note) => {
@@ -393,11 +411,27 @@ export default function AtomicCardsView({
     if (!onCreateTopic || notes.length < 1) return;
     
     setIsCreatingTopic(true);
+    setShowHubDropdown(false);
     
     try {
       await onCreateTopic(notes); // Use all notes in the flash card view
     } catch (error) {
       console.error('Failed to create topic:', error);
+    } finally {
+      setIsCreatingTopic(false);
+    }
+  };
+
+  const handleAddToExistingHub = async (hubNote: Note) => {
+    if (!onAddToExistingHub || notes.length < 1) return;
+    
+    setIsCreatingTopic(true);
+    setShowHubDropdown(false);
+    
+    try {
+      await onAddToExistingHub(notes, hubNote);
+    } catch (error) {
+      console.error('Failed to add to existing hub:', error);
     } finally {
       setIsCreatingTopic(false);
     }
@@ -898,25 +932,106 @@ export default function AtomicCardsView({
       {(onCreateTopic || onCreateStructuredNote) && (
         <div className="fixed bottom-6 right-6 z-50 flex gap-3">
           {onCreateTopic && (
-            <Button
-              onClick={handleCreateTopic}
-              size="sm"
-              className="font-medium shadow-lg hover:shadow-xl transition-shadow"
-              disabled={notes.length < 1 || isCreatingTopic || isCreatingStructured}
-              title={notes.length < 1 ? "Need at least 1 note to create a topic" : "Create a hub note from all notes in this view"}
-            >
-              {isCreatingTopic ? (
-                <>
-                  <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create a Hub ({notes.length})
-                </>
+            <div className="relative">
+              <Button
+                onClick={() => setShowHubDropdown(!showHubDropdown)}
+                size="sm"
+                className="font-medium shadow-lg hover:shadow-xl transition-shadow pr-2"
+                disabled={notes.length < 1 || isCreatingTopic || isCreatingStructured}
+                title={notes.length < 1 ? "Need at least 1 note to create a cluster" : "Cluster these notes into a topic"}
+                ref={hubDropdownRef}
+              >
+                {isCreatingTopic ? (
+                  <>
+                    <div className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full mr-2" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Cluster notes ({notes.length})
+                    <ChevronDown className="h-3 w-3 ml-1" />
+                  </>
+                )}
+              </Button>
+              
+              {/* Hub Options Dropdown */}
+              {showHubDropdown && !isCreatingTopic && !isCreatingStructured && (
+                <div 
+                  ref={hubPopoverRef}
+                  className="absolute bottom-full right-0 mb-2 w-[320px] max-h-[400px] border border-border rounded-lg bg-background shadow-xl z-50 overflow-hidden"
+                  style={{
+                    maxHeight: 'calc(100vh - 120px)', // Ensure it fits in viewport
+                  }}
+                >
+                  <div className="p-3 border-b border-border/30">
+                    <h4 className="text-sm font-medium text-foreground">
+                      Cluster Options
+                    </h4>
+                  </div>
+                  
+                  <div className="flex flex-col max-h-full">
+                    {/* Create New Hub - Fixed at top */}
+                    <div className="p-3 border-b border-border/20">
+                      <button
+                        onClick={handleCreateTopic}
+                        className="w-full text-left p-3 text-sm text-foreground bg-background hover:bg-accent rounded-md transition-colors border border-border/30 hover:border-border"
+                      >
+                        <div className="flex items-center gap-2 mb-1">
+                          <Plus className="h-4 w-4" />
+                          <span className="font-medium">Create New Cluster</span>
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          Generate a new topic cluster from all {notes.length} cards
+                        </div>
+                      </button>
+                    </div>
+                    
+                    {/* Scrollable section for existing clusters */}
+                    <div className="flex-1 overflow-hidden">
+                      {existingHubNotes && existingHubNotes.length > 0 ? (
+                        <>
+                          <div className="px-3 pt-3 pb-2">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Add to Existing Cluster
+                            </div>
+                          </div>
+                          <ScrollArea className="flex-1 max-h-[240px]">
+                            <div className="px-3 pb-3 space-y-1">
+                              {existingHubNotes.map(hubNote => (
+                                <button
+                                  key={hubNote.id}
+                                  onClick={() => handleAddToExistingHub(hubNote)}
+                                  className="w-full text-left p-3 text-sm text-foreground hover:bg-accent rounded-md transition-colors border border-transparent hover:border-border/30"
+                                >
+                                  <div className="font-medium text-xs mb-1 line-clamp-1">
+                                    {hubNote.title || "Untitled Cluster"}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                                    {hubNote.content?.substring(0, 60) + (hubNote.content && hubNote.content.length > 60 ? "..." : "")}
+                                  </div>
+                                  {hubNote.linkedAtomicNoteIds && (
+                                    <div className="text-xs text-muted-foreground/70 mt-1">
+                                      {hubNote.linkedAtomicNoteIds.length} linked notes
+                                    </div>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </ScrollArea>
+                        </>
+                      ) : (
+                        <div className="p-4 text-center">
+                          <div className="text-xs text-muted-foreground">
+                            No existing clusters. Create your first one above.
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
-            </Button>
+            </div>
           )}
           
           {onCreateStructuredNote && (
